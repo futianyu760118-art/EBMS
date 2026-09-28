@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "EBMS 前端（Vue 3 + Vite）：F3 原因项证据视图、F11 四视图交叉跳转",
+  "description": "EBMS 前端（Vue 3 + Vite）：F1 经营结果指标集、F3 原因项证据视图、F11 四视图交叉跳转",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

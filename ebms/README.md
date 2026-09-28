@@ -8,15 +8,28 @@ EBMS 是**跨域结论汇聚 + 经营判断 + 追溯**层，面向决策者与�
 
 ## 当前实现范围
 
-本次交付 **F3 证据关联（PAND-81）** 与 **F11 四视图交叉跳转（PAND-89）** 两个完整切片，并包含其运行所需的**最小数据底座**（工程骨架、鉴权/RBAC 中的操作人识别、Result/Reason 锚点、通用留痕）。
+本次交付 **F1 经营结果指标集（PAND-79）**、**F3 证据关联（PAND-81）** 与 **F11 四视图交叉跳转（PAND-89）** 三个完整切片，并包含其运行所需的**最小数据底座**（工程骨架、鉴权/RBAC 中的操作人识别、Result/Reason 锚点、通用留痕）。
 
 | 功能 | 状态 |
 |---|---|
+| F1 结果指标集：目标值 / 实际值 / 偏差值 + 来源与口径可追溯（PAND-79） | ✅ 已实现 |
 | F3 原因项挂载并查看支撑证据（PAND-81） | ✅ 已实现 |
 | F11 REPORT/TODO/Decision/Evidence 四视图互相跳转（PAND-89） | ✅ 已实现 |
-| F1 结果指标集（PAND-79） | 锚点表 `result_metrics` 已建，接口未实现 |
 | F2 归因穿透（PAND-80） | 锚点表 `result_reasons` + 只读清单已建，归因算法未实现 |
 | F7 REPORT 视图（PAND-85）、F8 TODO 视图（PAND-86）、F9 Decision 视图（PAND-87）、F10 Evidence 检索（PAND-88）、F4 来源标注（PAND-82）、F5 四层下钻（PAND-83）等 | 未实现（后续 issue） |
+
+### F1 经营结果指标集（PAND-79）说明
+
+决策者登录后默认落在本视图，一屏看到本周期全部配置指标的**目标值 / 实际值 / 偏差值**及其来源与口径。
+
+- **红线（结构性封死，非仅靠约定）**：`result_metrics` 只有**配置**字段（归属模块、目标值、方向、阈值、数据截止时间），**没有实际值/偏差列**。实际值只存在于 `owner_results`（专业 Owner 模块 Result 的消费收件箱），经 `(metric_code, owner_module, period, status='VERIFIED')` 的最新一条 `LATERAL JOIN` 进入视图——EBMS 没有任何路径能从 orders / materials 等专业原始表算出指标值。自动化断言：`result_metrics` 上无 `actual*` / `deviation*` 列（读 `information_schema`），且 results 域内不出现针对专业原始表的 SQL（源码静态扫描）。
+- **数据来源口径**：实际值 → M05 销售 / M06 交付 / M09 财经 的 Result；目标值 → M03 管理目标（EBMS 自有）；偏差值 = 实际值 − 目标值（后端算，前端只展示）。口径自述在**界面顶部常显**。
+- **唯一写入路径**：`POST /owner-results` 接收 Owner 模块 Result，校验来源模块白名单（`M05|M06|M09`）、必填 `calculationVersion`、非空 `evidenceIds` 与 `AEOS.Result.V1` 契约字段；按 `result_id` 幂等（重复接收返回 200 且 `changed=false`，不留第二条留痕）。
+- **无数据不兜底**：Owner 未供给时接口给 `hasData=false`，实际值与偏差一律渲染「**无数据**」，并区分两种原因——`来源模块未供给`（该模块从未供给过）与`来源模块未同步本期数据`（供给过其它周期）——**绝不由 EBMS 计算或填 0**。
+- **超阈值提示**：`|偏差率| > threshold_pct`（默认 5%）时该指标带「超阈值」提示，并给出达标/未达标判定（按 `direction` 判）。
+- **可追溯**：每条指标可查看实际值的 `calculation_version`、Owner Result 标识与 `evidence_ids`；证据引用直接链到 `#/evidence/<id>` 四视图落点；来源证据未在本系统登记时显式标注「来源证据未在本系统登记」，不生成死链。
+- **归属声明可配置**：指标 → 归属模块是**逐条数据**（`result_metrics.owner_module`）而非硬编码分支。AEOS 归属文档未逐指标枚举「产能 / 库存」的 Owner（只列到「交付 → M06」），故按 issue AC 声明为 M06 并保持可改。
+- **不涵盖**：指标集/目标的维护界面（配置写入由后续 issue 提供），本期只读展示 + Owner Result 接收接口。
 
 ### F11 四视图交叉跳转（PAND-89）说明
 
@@ -44,28 +57,34 @@ ebms/
         seed.js                   自检/联调夹具（含「无证据支撑」原因项、四视图关联/无关联对象）
         migrations/001_init.sql   数据模型（证据 / 原因项 / 留痕）
         migrations/002_view_links.sql  四视图对象锚点 + object_links（F11）
+        migrations/003_result_metrics.sql  Owner Result 收件箱 + 指标配置列（F1）
       domain/
         evidence/                 证据域：类型枚举 / 仓储 / 服务（校验+用例）
+        results/                  F1 指标域：来源口径 / Owner Result 仓储 / 指标仓储 / 服务
         views/                    四视图对象注册表（唯一类型口径）+ 对象仓储（F11）
         links/                    交叉跳转关联：规范化配对 / 仓储 / 导航服务（F11）
         reason/                   原因项锚点（只读）
         audit/                    通用留痕仓储
       http/
-        routes/                   证据路由、四视图对象路由、开发登录路由
+        routes/                   证据路由、四视图对象路由、指标集路由、开发登录路由
         middleware/               操作人识别、错误处理
       lib/token.js                HMAC-SHA256 签名 token
     test/evidence-ac.test.js      AC 逐条自动化验证（node:test）
     test/view-links-ac.test.js    F11 AC 逐条验证（可达性 / 落点 / 置灰 / 幂等 / 留痕）
+    test/results-ac.test.js       F1 AC 逐条验证（口径红线 / 偏差 / 无数据 / 可追溯 / 幂等）
   frontend/
     src/
-      App.vue                     登录 + 模块切换（原因项证据 / 四视图导航）
+      App.vue                     登录 + 模块切换（经营结果 / 原因项证据 / 四视图导航），默认落地 F1
+      views/ResultOverviewView.vue F1 指标集视图（取数 + 状态）
       views/ReasonEvidenceView.vue 证据列表 / 无证据支撑提示 / 留痕
       views/ViewExplorer.vue      F11 四视图外壳：类型切换、对象清单、hash 路由
       views/ViewObjectDetail.vue  F11 对象落地页 + 交叉跳转入口
+      components/ResultMetricTable.vue F1 指标集纯展示组件（SSR 可测）
       components/                 详情面板、新增弹层、关联弹层、四视图导航栏
+      result-overview.js          F1 展示模型纯逻辑（无数据文案 / 偏差 / 口径版本与证据）
       view-nav.js                 F11 导航纯逻辑（置灰判定 / 落点地址 / hash 解析）
       api/client.js               API 客户端
-    test/                         F11 前端单测（导航模型 + SSR 渲染断言）
+    test/                         F1 / F11 前端单测（模型 + SSR 渲染断言）
 ```
 
 ## 数据模型（本切片）
@@ -77,6 +96,21 @@ ebms/
 - `audit_log` —— 通用留痕：`actor`（id）+ `actor_name`（可读名）+ `action` + `entity` + `at`。
 - `result_metrics` / `result_reasons` —— Evidence 的挂载锚点（F1/F2 的完整字段由各自 issue 交付）。
 - `ebms_users` —— 本切片最小操作人身份。
+
+**F1 经营结果指标集（PAND-79，迁移 003）**
+
+- `result_metrics` —— 指标**配置**（`code`、`name`、`dimension`、`period_type`、`period_value`、`as_of`
+  已由 001 建；003 追加 `unit`、`owner_module`（`M05|M06|M09`）、`direction`（`higher_better|lower_better`）、
+  `target_value`、`target_source_module`（固定 `M03`）、`target_source_ref`、`threshold_pct`、
+  `is_active`、`order_no`、`updated_at`）。
+  **刻意不含实际值/偏差列**：实际值不落在这里。
+- `owner_results` —— Owner 模块 Result 的**消费收件箱**（`AEOS.Result.V1`）：
+  `result_id`（唯一，幂等键）、`contract_version`、`source_system`（`M05|M06|M09`）、`object_type`、`object_id`、
+  `metric_code`、`value`、`unit`、`period_type`、`period_value`、`calculation_version`（非空）、
+  `evidence_ids`（JSONB 数组）、`status`（`VERIFIED|DRAFT|REJECTED`）、`occurred_at`、`trace_id`、
+  `received_by`、`received_at`。
+  实际值进视图的唯一路径：按 `(metric_code, owner_module, period, status='VERIFIED')` 取**最新一条**。
+- `audit_log.action` 扩展 `owner_result.receive`。
 
 **F11 四视图（PAND-89，迁移 002）**
 
@@ -103,6 +137,11 @@ ebms/
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
+| GET | `/result-sources` | **F1** 实际值 Owner 模块口径清单（M05/M06/M09 + 职责范围） |
+| GET | `/results?period_type=&period_value=` | **F1 指标集**：目标值 / 实际值 / 偏差值 + 来源声明 + 口径版本 + 证据引用（缺省取最近周期） |
+| GET | `/results/{metricId}` | **F1** 单指标详情（含 Owner Result 原样载荷与目标值溯源） |
+| GET | `/owner-results?metric_code=&source_system=&limit=` | **F1** 已接收的 Owner Result 清单（对账用） |
+| POST | `/owner-results` | **F1** 接收专业模块 Result 写入（需鉴权；按 `result_id` 幂等） |
 | GET | `/evidence-types` | 证据类型枚举 |
 | GET | `/reasons` | 原因项清单（含证据计数，导航锚点） |
 | GET | `/reasons/{reasonId}/evidences` | **F3 证据列表** + `无证据支撑` 状态 + 操作留痕 |
@@ -152,10 +191,14 @@ npm run dev                # http://127.0.0.1:5199（/api 已代理到后端）
 ## 自检
 
 ```bash
-cd ebms/backend && npm test        # 29 项：F3 + F11 的 AC 场景/边界/判定标准逐条断言
-cd ebms/frontend && npm test       # 11 项：F11 导航模型 + SSR 渲染断言（置灰/「无关联」文案）
+cd ebms/backend && npm test        # 53 项：F3 + F11 + F1 的 AC 场景/边界/判定标准逐条断言
+cd ebms/frontend && npm test       # 31 项：F11 导航模型 / F1 指标集模型 + SSR 渲染断言
 cd ebms/frontend && npm run build  # 前端构建
 ```
+
+F1 夹具覆盖：12 条指标（M09 6 条 / M05 2 条 / M06 4 条）、11 条 Owner Result；其中 2 条**无数据**
+（`new_customer_count` 只供给过 2026-08 → 「来源模块未同步本期数据」；`on_time_delivery` 从未供给 →
+「来源模块未供给」），供无数据边界与「偏差一并无法计算」的断言使用。
 
 F11 夹具覆盖：6 组类型对（→ 12 个有向组合）各 1 条关联；`report`/`todo`/`decision`/`evidence` 各 1 个**无关联**对象（入口置灰边界）；1 个**部分关联** TODO（逐入口置灰）。
 
@@ -165,6 +208,11 @@ F11 夹具覆盖：6 组类型对（→ 12 个有向组合）各 1 条关联；`
 
 - **留痕与业务同事务**：新增/关联/解除关联的写入与其留痕在同一事务内提交，避免「操作生效但无留痕」。
 - **关联幂等**：重复关联不产生第二条留痕；解除未关联的关系返回 409 而非静默成功。
+- **实际值只来自 Owner Result**：EBMS 不持有实际值，也不读专业原始表；指标值经 `owner_results`
+  按「指标 + Owner 模块 + 周期 + VERIFIED」取最新一条，来源模块限 `M05|M06|M09`。
+- **无数据不兜底**：Owner 未供给时实际值与偏差均为「无数据」并给出原因（未供给 / 未同步本期），
+  不显示 0、不留空白、不由 EBMS 计算。
+- **口径与证据随值同行**：每条实际值必须带 `calculation_version` 与 `evidence_ids`，缺任一项的 Result 拒收。
 - **无证据支撑**：接口返回 `evidenceStatus: NO_EVIDENCE`，前端渲染醒目告警 + 列表内显式提示。
 - **附件不暴露存储路径**：附件经后端流式返回，路径以 `basename` 收敛，避免目录穿越。
 - **不写入密钥**：`EBMS_AUTH_SECRET` 等由部署环境注入，`.env` 不入库。

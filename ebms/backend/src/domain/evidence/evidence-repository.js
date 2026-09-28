@@ -98,4 +98,17 @@ async function listCandidates({ q = null, unlinkedToReason = null, limit = 50 } 
   return rows;
 }
 
-module.exports = { insert, findById, listByReason, listCandidates, link, unlink, isLinked, countByReason };
+/**
+ * 按 id 批量读取证据，用于把外部引用（如 Owner Result 的 evidence_ids）解析成本系统的证据实体。
+ * 以 `id::text = ANY(...)` 匹配：来源侧给出非法 uuid 时不会抛错，而是解析不到（由调用方显式标注）。
+ */
+async function listByIds(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return [];
+  const { rows } = await query(
+    `SELECT ${SELECT_FIELDS} FROM evidences e ${CREATOR_JOIN} WHERE e.id::text = ANY($1::text[])`,
+    [ids]
+  );
+  return rows;
+}
+
+module.exports = { insert, findById, listByReason, listCandidates, listByIds, link, unlink, isLinked, countByReason };

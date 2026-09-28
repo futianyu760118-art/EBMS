@@ -1,15 +1,18 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { api, getToken, setToken } from './api/client';
 import ReasonEvidenceView from './views/ReasonEvidenceView.vue';
+import ResultOverviewView from './views/ResultOverviewView.vue';
 import ViewExplorer from './views/ViewExplorer.vue';
+import { parseHash } from './view-nav';
 
 const authed = ref(Boolean(getToken()));
 const booting = ref(false);
 const error = ref('');
 
-// F3 原因项证据（PAND-81） / F11 四视图交叉跳转（PAND-89）
-const activeModule = ref('reason');
+// F1 经营结果指标集（PAND-79） / F3 原因项证据（PAND-81） / F11 四视图交叉跳转（PAND-89）
+// 默认落地 F1：决策者登录 EBMS 即可看到指标集，无需额外点击。
+const activeModule = ref('results');
 
 const username = ref('owner');
 const currentUser = ref(null);
@@ -62,9 +65,19 @@ function logout() {
   currentUser.value = null;
 }
 
+// F1 的证据引用指向 `#/evidence/<id>`（四视图落点）：落到该 hash 时自动切到四视图，
+// 使「由 evidence_ids 可定位到对应证据」在界面上是一次真实跳转。
+function syncFromHash() {
+  if (parseHash(window.location.hash)) activeModule.value = 'views';
+}
+
 onMounted(() => {
   if (authed.value) bootstrap();
+  window.addEventListener('hashchange', syncFromHash);
+  syncFromHash();
 });
+
+onBeforeUnmount(() => window.removeEventListener('hashchange', syncFromHash));
 
 const selectedReason = () => reasons.value.find((r) => r.id === selectedReasonId.value);
 </script>
@@ -74,10 +87,18 @@ const selectedReason = () => reasons.value.find((r) => r.id === selectedReasonId
     <header class="app-header">
       <div class="brand">
         <span class="brand-mark">EBMS</span>
-        <span class="brand-sub">经营管理系统 · 原因项证据（F3）</span>
+        <span class="brand-sub">经营管理系统 · 经营结果指标集（F1）</span>
       </div>
       <div v-if="authed" class="app-user">
         <nav class="module-tabs">
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            :class="{ active: activeModule === 'results' }"
+            @click="activeModule = 'results'"
+          >
+            经营结果（F1）
+          </button>
           <button
             type="button"
             class="btn btn-ghost btn-sm"
@@ -112,6 +133,10 @@ const selectedReason = () => reasons.value.find((r) => r.id === selectedReasonId
         <button class="btn btn-primary" type="submit">登录</button>
         <p class="muted hint">开发环境账号：<code>decider</code>（决策者）、<code>owner</code>（管理责任人）</p>
       </form>
+    </main>
+
+    <main v-else-if="activeModule === 'results'" class="layout-single">
+      <ResultOverviewView />
     </main>
 
     <main v-else-if="activeModule === 'views'" class="layout">

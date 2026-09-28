@@ -12,7 +12,22 @@ const IDS = {
     decider: '11111111-1111-4111-8111-111111111111',
     owner: '22222222-2222-4222-8222-222222222222',
   },
+  // F1 指标集：沿用 001 的锚点 id（result_reasons 已按此 id 关联「订单交付」）
   metric: '33333333-3333-4333-8333-333333333333',
+  metrics: {
+    revenue: '44444444-0001-4000-8000-000000000001',
+    grossMarginRate: '44444444-0002-4000-8000-000000000002',
+    operatingCost: '44444444-0003-4000-8000-000000000003',
+    cashFlow: '44444444-0004-4000-8000-000000000004',
+    receivableDays: '44444444-0005-4000-8000-000000000005',
+    arBalance: '44444444-0006-4000-8000-000000000006',
+    orderAmount: '44444444-0007-4000-8000-000000000007',
+    newCustomerCount: '44444444-0008-4000-8000-000000000008',
+    orderDelivery: '33333333-3333-4333-8333-333333333333',
+    onTimeDelivery: '44444444-0009-4000-8000-000000000009',
+    capacityUtilization: '44444444-0010-4000-8000-000000000010',
+    inventoryTurnover: '44444444-0011-4000-8000-000000000011',
+  },
   reasons: {
     capacity: 'aaaaaaaa-0001-4000-8000-000000000001', // 已挂载证据
     channel: 'aaaaaaaa-0002-4000-8000-000000000002',  // 无证据支撑（边界）
@@ -24,6 +39,8 @@ const IDS = {
     systemRecord: 'bbbbbbbb-0003-4000-8000-000000000003',
     manualNote: 'bbbbbbbb-0004-4000-8000-000000000004',
     warehouse: 'bbbbbbbb-0005-4000-8000-000000000005',
+    financeReport: 'bbbbbbbb-0006-4000-8000-000000000006',
+    orderLedger: 'bbbbbbbb-0007-4000-8000-000000000007',
   },
   // F11（PAND-89）四视图对象锚点：含「有关联」与「无关联」两组，
   // 前者覆盖全部 6 组类型对（→ 12 个有向组合），后者用于「入口置灰」的边界判定。
@@ -54,8 +71,44 @@ const VIEW_LINK_FIXTURES = [
   { from: ['todo', 'partial'], to: ['evidence', 'manualNote'], relationType: 'related' },
 ];
 
+// F1 指标集夹具（PAND-79）：12 条，覆盖三家 Owner 模块（M09 财经 / M05 销售 / M06 交付）、
+// 目标方向（越高越好 / 越低越好）、偏差阈值内/外，以及两种「无数据」边界。
+// 目标值来自 M03 Management Goal（EBMS 自有）；实际值一律由 owner_results 供给。
+const METRIC_FIXTURES = [
+  { key: 'revenue', code: 'revenue', name: '营业收入', dimension: 'finance', unit: '万元', ownerModule: 'M09', direction: 'higher_better', target: 12000, goalRef: 'MG-2026-09-FIN-01', asOf: '2026-09-30T23:59:59+08:00' },
+  { key: 'grossMarginRate', code: 'gross_margin_rate', name: '毛利率', dimension: 'finance', unit: '%', ownerModule: 'M09', direction: 'higher_better', target: 32.0, goalRef: 'MG-2026-09-FIN-02', asOf: '2026-09-30T23:59:59+08:00' },
+  { key: 'operatingCost', code: 'operating_cost', name: '营业成本', dimension: 'finance', unit: '万元', ownerModule: 'M09', direction: 'lower_better', target: 8000, goalRef: 'MG-2026-09-FIN-03', asOf: '2026-09-30T23:59:59+08:00' },
+  { key: 'cashFlow', code: 'cash_flow', name: '经营性现金流', dimension: 'finance', unit: '万元', ownerModule: 'M09', direction: 'higher_better', target: 1500, goalRef: 'MG-2026-09-FIN-04', asOf: '2026-09-30T23:59:59+08:00' },
+  { key: 'receivableDays', code: 'receivable_days', name: '应收周转天数', dimension: 'finance', unit: '天', ownerModule: 'M09', direction: 'lower_better', target: 60, goalRef: 'MG-2026-09-FIN-05', asOf: '2026-09-30T23:59:59+08:00' },
+  { key: 'arBalance', code: 'ar_balance', name: '应收账款余额', dimension: 'finance', unit: '万元', ownerModule: 'M09', direction: 'lower_better', target: 3000, goalRef: 'MG-2026-09-FIN-06', asOf: '2026-09-30T23:59:59+08:00' },
+  { key: 'orderAmount', code: 'order_amount', name: '订单金额', dimension: 'business', unit: '万元', ownerModule: 'M05', direction: 'higher_better', target: 13500, goalRef: 'MG-2026-09-BIZ-01', asOf: '2026-09-28T00:00:00+08:00' },
+  { key: 'newCustomerCount', code: 'new_customer_count', name: '新增客户数', dimension: 'business', unit: '家', ownerModule: 'M05', direction: 'higher_better', target: 40, goalRef: 'MG-2026-09-BIZ-02', asOf: '2026-09-28T00:00:00+08:00' },
+  { key: 'orderDelivery', code: 'order_delivery', name: '订单交付达成率', dimension: 'business', unit: '%', ownerModule: 'M06', direction: 'higher_better', target: 100.0, goalRef: 'MG-2026-09-BIZ-03', asOf: '2026-09-28T00:00:00+08:00' },
+  { key: 'onTimeDelivery', code: 'on_time_delivery', name: '准时交付率', dimension: 'business', unit: '%', ownerModule: 'M06', direction: 'higher_better', target: 98.0, goalRef: 'MG-2026-09-BIZ-04', asOf: '2026-09-28T00:00:00+08:00' },
+  { key: 'capacityUtilization', code: 'capacity_utilization', name: '产能利用率', dimension: 'business', unit: '%', ownerModule: 'M06', direction: 'higher_better', target: 90.0, goalRef: 'MG-2026-09-BIZ-05', asOf: '2026-09-28T00:00:00+08:00' },
+  { key: 'inventoryTurnover', code: 'inventory_turnover', name: '库存周转率', dimension: 'business', unit: '次', ownerModule: 'M06', direction: 'higher_better', target: 6.0, goalRef: 'MG-2026-09-BIZ-06', asOf: '2026-09-28T00:00:00+08:00' },
+];
+
+// Owner Result 夹具：实际值的唯一来源（EBMS 只登记、不重算）。
+// 覆盖三种偏差形态：超阈值未达标、阈值内达标、越低越好方向。
+const OWNER_RESULT_FIXTURES = [
+  { resultId: 'res-M09-revenue-2026-09', metricKey: 'revenue', sourceSystem: 'M09', metricName: '营业收入', value: 11280, unit: '万元', calculationVersion: 'FIN-2026.09-v3', traceId: 'trace-fin-202609-rev', evidenceKeys: ['financeReport'] },
+  { resultId: 'res-M09-gross-margin-rate-2026-09', metricKey: 'grossMarginRate', sourceSystem: 'M09', metricName: '毛利率', value: 30.6, unit: '%', calculationVersion: 'FIN-2026.09-v3', traceId: 'trace-fin-202609-gmr', evidenceKeys: ['financeReport'] },
+  { resultId: 'res-M09-operating-cost-2026-09', metricKey: 'operatingCost', sourceSystem: 'M09', metricName: '营业成本', value: 8410, unit: '万元', calculationVersion: 'FIN-2026.09-v3', traceId: 'trace-fin-202609-cost', evidenceKeys: ['financeReport', 'contract'] },
+  { resultId: 'res-M09-cash-flow-2026-09', metricKey: 'cashFlow', sourceSystem: 'M09', metricName: '经营性现金流', value: 1560, unit: '万元', calculationVersion: 'FIN-2026.09-v3', traceId: 'trace-fin-202609-cash', evidenceKeys: ['financeReport'] },
+  { resultId: 'res-M09-receivable-days-2026-09', metricKey: 'receivableDays', sourceSystem: 'M09', metricName: '应收周转天数', value: 68, unit: '天', calculationVersion: 'FIN-2026.09-v3', traceId: 'trace-fin-202609-ar', evidenceKeys: ['financeReport'] },
+  { resultId: 'res-M09-ar-balance-2026-09', metricKey: 'arBalance', sourceSystem: 'M09', metricName: '应收账款余额', value: 3480, unit: '万元', calculationVersion: 'FIN-2026.09-v3', traceId: 'trace-fin-202609-arb', evidenceKeys: ['financeReport'] },
+  { resultId: 'res-M05-order-amount-2026-09', metricKey: 'orderAmount', sourceSystem: 'M05', metricName: '订单金额', value: 11800, unit: '万元', calculationVersion: 'SALES-ORD-2026.09-v2', traceId: 'trace-sales-202609-amt', evidenceKeys: ['orderLedger'] },
+  { resultId: 'res-M06-order-delivery-2026-09', metricKey: 'orderDelivery', sourceSystem: 'M06', metricName: '订单交付达成率', value: 87.0, unit: '%', calculationVersion: 'DELIV-2026.09-v4', traceId: 'trace-deliv-202609-od', evidenceKeys: ['systemRecord', 'manualNote', 'document'] },
+  { resultId: 'res-M06-capacity-utilization-2026-09', metricKey: 'capacityUtilization', sourceSystem: 'M06', metricName: '产能利用率', value: 88.0, unit: '%', calculationVersion: 'DELIV-2026.09-v4', traceId: 'trace-deliv-202609-cap', evidenceKeys: ['systemRecord', 'manualNote'] },
+  { resultId: 'res-M06-inventory-turnover-2026-09', metricKey: 'inventoryTurnover', sourceSystem: 'M06', metricName: '库存周转率', value: 5.2, unit: '次', calculationVersion: 'DELIV-2026.09-v4', traceId: 'trace-deliv-202609-inv', evidenceKeys: ['warehouse'] },
+  // 边界：M05 供给过「新增客户数」，但只到 8 月 → 9 月应判为「来源模块未同步本期数据」
+  { resultId: 'res-M05-new-customer-2026-08', metricKey: 'newCustomerCount', sourceSystem: 'M05', metricName: '新增客户数', value: 37, unit: '家', calculationVersion: 'SALES-CUST-2026.08-v1', traceId: 'trace-sales-202608-cust', evidenceKeys: ['orderLedger'], periodValue: '2026-08', occurredAt: '2026-08-31T23:59:59+08:00' },
+];
+
 const CONTRACT_FILE = '采购框架合同_SC-2026-014.pdf';
 const SEED_ACTOR_NAME = '李责任（管理责任人）';
+const SEED_PERIOD = { periodType: 'month', periodValue: '2026-09' };
 
 function minimalPdf(text) {
   const body = `BT /F1 12 Tf 40 750 Td (${text}) Tj ET`;
@@ -90,7 +143,7 @@ async function seed() {
 
     // 幂等：本脚本是开发/自检夹具，先清空 EBMS 自有数据再灌入。
     await client.query(
-      'TRUNCATE reason_evidences, object_links, audit_log, evidences, result_reasons, result_metrics, reports, todos, decisions CASCADE'
+      'TRUNCATE reason_evidences, object_links, audit_log, evidences, owner_results, result_reasons, result_metrics, reports, todos, decisions CASCADE'
     );
 
     await client.query(
@@ -101,11 +154,79 @@ async function seed() {
       [IDS.users.decider, IDS.users.owner]
     );
 
-    await client.query(
-      `INSERT INTO result_metrics (id, code, name, dimension, period_type, period_value, as_of)
-       VALUES ($1, 'order_delivery', '订单交付', 'business', 'month', '2026-09', '2026-09-23T00:00:00+08:00')`,
-      [IDS.metric]
-    );
+    // ---------------------------------------------------------------- F1 指标集（PAND-79）
+    // 目标值来自 M03 Management Goal（EBMS 自有）；实际值不在此表，一律由 owner_results 供给。
+    for (const [index, m] of METRIC_FIXTURES.entries()) {
+      await client.query(
+        `INSERT INTO result_metrics
+           (id, code, name, dimension, period_type, period_value, as_of, unit, owner_module,
+            direction, target_value, target_source_module, target_source_ref, threshold_pct, is_active, order_no)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'M03', $12, $13, TRUE, $14)`,
+        [
+          IDS.metrics[m.key],
+          m.code,
+          m.name,
+          m.dimension,
+          SEED_PERIOD.periodType,
+          SEED_PERIOD.periodValue,
+          m.asOf,
+          m.unit,
+          m.ownerModule,
+          m.direction,
+          m.target,
+          m.goalRef,
+          m.thresholdPct ?? 5.0,
+          index + 1,
+        ]
+      );
+    }
+
+    // 登记 Owner Result（实际值的唯一来源）。EBMS 只按契约登记，不做任何重算。
+    for (const r of OWNER_RESULT_FIXTURES) {
+      const metric = METRIC_FIXTURES.find((m) => m.key === r.metricKey);
+      const evidenceIds = r.evidenceKeys.map((k) => IDS.evidences[k]);
+      const inserted = await client.query(
+        `INSERT INTO owner_results
+           (result_id, source_system, object_type, object_id, metric_code, metric_name, value, unit,
+            period_type, period_value, calculation_version, evidence_ids, status, occurred_at, trace_id, received_by)
+         VALUES ($1, $2, 'BusinessMetric', $3, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, 'VERIFIED', $11, $12, $13)
+         RETURNING id`,
+        [
+          r.resultId,
+          r.sourceSystem,
+          metric.code,
+          r.metricName,
+          r.value,
+          r.unit,
+          SEED_PERIOD.periodType,
+          r.periodValue ?? SEED_PERIOD.periodValue,
+          r.calculationVersion,
+          JSON.stringify(evidenceIds),
+          r.occurredAt ?? metric.asOf,
+          r.traceId,
+          IDS.users.owner,
+        ]
+      );
+      await client.query(
+        `INSERT INTO audit_log (actor, actor_name, action, entity_type, entity_id, reason_id, after)
+         VALUES ($1, $2, 'owner_result.receive', 'owner_result', $3, NULL, $4::jsonb)`,
+        [
+          IDS.users.owner,
+          SEED_ACTOR_NAME,
+          String(inserted.rows[0].id),
+          JSON.stringify({
+            resultId: r.resultId,
+            sourceSystem: r.sourceSystem,
+            metricCode: metric.code,
+            value: r.value,
+            periodType: SEED_PERIOD.periodType,
+            periodValue: r.periodValue ?? SEED_PERIOD.periodValue,
+            calculationVersion: r.calculationVersion,
+            evidenceIds,
+          }),
+        ]
+      );
+    }
 
     await client.query(
       `INSERT INTO result_reasons (id, metric_id, name, direction, contribution_pct, owner, order_no) VALUES
@@ -159,6 +280,24 @@ async function seed() {
         formedAt: '2026-09-18T00:00:00+08:00',
         owner: '供应链中心 / 系统',
         content: 'WMS 库存周转与呆滞物料导出，用于佐证原材料涨价的影响范围。',
+        attachments: [],
+      },
+      {
+        id: IDS.evidences.financeReport,
+        type: 'system_record',
+        title: '财务月结报表导出（2026-09）',
+        formedAt: '2026-09-30T00:00:00+08:00',
+        owner: '财务中心 / 系统',
+        content: 'M09 财经自治月结导出：收入、成本、毛利率、现金流、应收应付口径明细。',
+        attachments: [],
+      },
+      {
+        id: IDS.evidences.orderLedger,
+        type: 'system_record',
+        title: '销售订单台账导出（2026-09）',
+        formedAt: '2026-09-28T00:00:00+08:00',
+        owner: '销售中心 / 系统',
+        content: 'M05 销售自治台账导出：商务状态订单金额、新增客户数。',
         attachments: [],
       },
     ];
@@ -252,6 +391,9 @@ async function seed() {
     console.log('[seed]   reason 已有证据 :', IDS.reasons.material, '(2 条)');
     console.log('[seed]   四视图关联     :', VIEW_LINK_FIXTURES.length, '条（覆盖 6 组类型对）');
     console.log('[seed]   无关联对象     : report/todo/decision 各 1 + 证据 1（入口置灰边界）');
+    console.log('[seed]   指标集         :', METRIC_FIXTURES.length, '条（M09 财经 6 / M05 销售 2 / M06 交付 4）');
+    console.log('[seed]   Owner Result   :', OWNER_RESULT_FIXTURES.length, '条（实际值唯一来源）');
+    console.log('[seed]   无数据边界     : on_time_delivery（未供给）/ new_customer_count（未同步本期）');
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -269,4 +411,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { seed, IDS, CONTRACT_FILE, VIEW_LINK_FIXTURES };
+module.exports = { seed, IDS, CONTRACT_FILE, VIEW_LINK_FIXTURES, METRIC_FIXTURES, OWNER_RESULT_FIXTURES, SEED_PERIOD };

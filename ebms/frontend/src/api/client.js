@@ -53,6 +53,13 @@ export const api = {
   unlinkEvidence: (reasonId, evidenceId) =>
     request(`/reasons/${reasonId}/evidences/${evidenceId}`, { method: 'DELETE', auth: true }),
 
+  // F1（PAND-79）经营结果指标集
+  results: (query = '') => request(`/results${query}`),
+  resultMetric: (metricId) => request(`/results/${metricId}`),
+  resultSources: () => request('/result-sources'),
+  ownerResults: (query = '') => request(`/owner-results${query}`),
+  receiveOwnerResult: (input) => request('/owner-results', { method: 'POST', body: input, auth: true }),
+
   // F11（PAND-89）四视图对象交叉跳转
   viewObjectTypes: () => request('/view-object-types'),
   viewObjects: (type) => request(`/objects/${type}`),

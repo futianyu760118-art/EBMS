@@ -190,3 +190,35 @@ h3 { font-size: 14px; }
   font-size: 12px; color: var(--muted); background: #eef1f6;
   border: 1px dashed var(--border); border-radius: 10px; padding: 2px 9px;
 }
+
+/* ---------------- F1 经营结果指标集（PAND-79） ---------------- */
+/* 指标集为单列宽表（7 列），不共用 F3 的 rail 两栏栅格 */
+.layout-single { padding: 16px 20px; }
+
+.stat-strip { display: flex; gap: 10px; list-style: none; margin: 0 0 12px; padding: 0; flex-wrap: wrap; }
+.stat-strip li {
+  flex: 1 1 130px; background: #fafbfc; border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 9px 12px; display: flex; flex-direction: column; gap: 2px;
+}
+.stat-value { font-size: 20px; font-weight: 700; line-height: 1.1; }
+.stat-label { font-size: 12px; }
+
+.metric-table caption { text-align: left; padding: 0 0 8px; font-size: 12px; }
+.metric-table { table-layout: auto; }
+.metric-table td { vertical-align: top; }
+.metric-table .owner-scope { max-width: 150px; }
+.metric-table tbody tr td:first-child { min-width: 150px; }
+
+.badge-warn { background: var(--warn-bg); color: var(--warn-text); }
+.nodata-mark { font-weight: 600; color: var(--warn-text); }
+.no-data-reason { font-size: 12px; }
+
+.trace-line { display: flex; gap: 6px; font-size: 12px; align-items: baseline; }
+.trace-line .muted { flex-shrink: 0; }
+.evidence-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.evidence-chip {
+  display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px;
+  background: #e7effc; color: var(--primary-dark); border: 1px solid #b9cff2;
+  max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.evidence-chip.unresolved { background: var(--warn-bg); color: var(--warn-text); border-color: var(--warn-border); }
