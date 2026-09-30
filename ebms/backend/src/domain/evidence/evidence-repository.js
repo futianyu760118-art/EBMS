@@ -70,8 +70,14 @@ async function isLinked(reasonId, evidenceId) {
   return rows.length > 0;
 }
 
-async function countByReason(reasonId) {
-  const { rows } = await query(
+/**
+ * 统计原因项当前的关联证据数。
+ * 调用方若已开启事务必须传入 client：走连接池会在另一条连接上读到未提交前的旧状态，
+ * 导致「解除最后一条关联」时仍返回 HAS_EVIDENCE。
+ */
+async function countByReason(reasonId, client = null) {
+  const runner = client || { query };
+  const { rows } = await runner.query(
     `SELECT count(*)::int AS total FROM reason_evidences WHERE reason_id = $1`,
     [reasonId]
   );

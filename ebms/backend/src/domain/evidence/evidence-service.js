@@ -324,7 +324,7 @@ async function unlinkEvidence(actor, { reasonId, evidenceId }) {
       before: { reasonId, evidenceId },
     });
 
-    const remaining = await evidenceRepo.countByReason(reasonId);
+    const remaining = await evidenceRepo.countByReason(reasonId, client);
     return {
       changed: true,
       reasonId,

@@ -246,6 +246,19 @@ test('场景 3：解除关联产生留痕，且不删除证据本身', async () 
   assert.equal(json.data.audit.action, 'evidence.unlink');
   assert.ok(json.data.audit.actor && json.data.audit.at);
 
+  // 回归：响应里的关联数与「无证据支撑」状态必须反映本次解除后的库内真值，
+  // 不得因事务内走连接池读到未提交前的旧状态而仍报 HAS_EVIDENCE。
+  const live = await pool.query(
+    `SELECT count(*)::int AS n FROM reason_evidences WHERE reason_id = $1`,
+    [REASON_WITHOUT_EVIDENCE]
+  );
+  assert.equal(json.data.remainingEvidenceCount, live.rows[0].n, '解除后返回的关联数应与库内一致');
+  assert.equal(
+    json.data.evidenceStatus,
+    live.rows[0].n > 0 ? 'HAS_EVIDENCE' : 'NO_EVIDENCE',
+    '解除后证据支撑状态应与库内一致'
+  );
+
   const after = await api(`/evidences/${DOC_EVIDENCE}`);
   assert.equal(after.status, 200, '解除关联后证据实体仍可访问');
 
