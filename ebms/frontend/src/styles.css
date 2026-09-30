@@ -222,3 +222,47 @@ h3 { font-size: 14px; }
   max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .evidence-chip.unresolved { background: var(--warn-bg); color: var(--warn-text); border-color: var(--warn-border); }
+
+/* ---------------------------------------------------------------- F8（PAND-86）TODO 待办视图 */
+.filter-bar {
+  display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap;
+  padding: 10px 12px; margin-bottom: 12px;
+  background: #fafbfc; border: 1px solid var(--border); border-radius: var(--radius);
+}
+.filter-field { display: flex; flex-direction: column; gap: 4px; }
+.filter-field input, .filter-field select { padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; }
+.filter-check { flex-direction: row; align-items: center; gap: 6px; padding-bottom: 4px; }
+
+.todo-split { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
+.todo-split.with-detail { grid-template-columns: minmax(0, 1fr) 380px; }
+.todo-split .detail-panel { width: auto; }
+
+.todo-table td { vertical-align: top; }
+.todo-table .col-actions { white-space: normal; }
+.todo-table .row-overdue { background: #fffaf3; }
+.todo-table .row-done { color: var(--muted); }
+
+.link-title {
+  padding: 0; border: 0; background: none; cursor: pointer; text-align: left;
+  color: var(--primary); font-size: 13px; font-weight: 600; font-family: inherit;
+}
+.link-title:hover { text-decoration: underline; }
+
+.badge-danger { background: var(--error-bg); color: var(--error-text); }
+.badge-rule { background: var(--info-bg); color: var(--info-text); }
+.badge-manual { background: #f1eefb; color: #4b3f8f; }
+.badge-status-pending { background: var(--warn-bg); color: var(--warn-text); }
+.badge-status-in_progress { background: var(--info-bg); color: var(--info-text); }
+.badge-status-done { background: var(--ok-bg); color: var(--ok-text); }
+
+.unassigned-mark { color: var(--warn-text); background: var(--warn-bg); padding: 1px 7px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+.relation-line { display: flex; gap: 6px; align-items: baseline; }
+.trigger-line { font-size: 12px; }
+
+.detail-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.detail-header h3 { margin: 0 0 4px; }
+.action-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.assign-row { display: flex; gap: 8px; }
+.assign-row input {
+  flex: 1; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px;
+}

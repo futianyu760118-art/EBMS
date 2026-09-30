@@ -10,7 +10,7 @@ async function record(client, { actor, actorName, action, entityType, entityId, 
   const { rows } = await runner.query(
     `INSERT INTO audit_log (actor, actor_name, action, entity_type, entity_id, reason_id, before, after)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     RETURNING id, actor, actor_name, action, entity_type, entity_id, reason_id, at`,
+     RETURNING id, actor, actor_name, action, entity_type, entity_id, reason_id, before, after, at`,
     [actor, actorName, action, entityType, entityId, reasonId, before, after]
   );
   return rows[0];

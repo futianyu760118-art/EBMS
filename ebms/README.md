@@ -8,15 +8,16 @@ EBMS 是**跨域结论汇聚 + 经营判断 + 追溯**层，面向决策者与�
 
 ## 当前实现范围
 
-本次交付 **F1 经营结果指标集（PAND-79）**、**F3 证据关联（PAND-81）** 与 **F11 四视图交叉跳转（PAND-89）** 三个完整切片，并包含其运行所需的**最小数据底座**（工程骨架、鉴权/RBAC 中的操作人识别、Result/Reason 锚点、通用留痕）。
+本次交付 **F1 经营结果指标集（PAND-79）**、**F3 证据关联（PAND-81）**、**F8 TODO 视图（PAND-86）** 与 **F11 四视图交叉跳转（PAND-89）** 四个完整切片，并包含其运行所需的**最小数据底座**（工程骨架、鉴权/RBAC 中的操作人识别、Result/Reason 锚点、通用留痕）。
 
 | 功能 | 状态 |
 |---|---|
 | F1 结果指标集：目标值 / 实际值 / 偏差值 + 来源与口径可追溯（PAND-79） | ✅ 已实现 |
 | F3 原因项挂载并查看支撑证据（PAND-81） | ✅ 已实现 |
+| F8 TODO 视图：待办聚合 + 两种来源 + 认领 / 指派 / 状态流转（PAND-86） | ✅ 已实现 |
 | F11 REPORT/TODO/Decision/Evidence 四视图互相跳转（PAND-89） | ✅ 已实现 |
 | F2 归因穿透（PAND-80） | 锚点表 `result_reasons` + 只读清单已建，归因算法未实现 |
-| F7 REPORT 视图（PAND-85）、F8 TODO 视图（PAND-86）、F9 Decision 视图（PAND-87）、F10 Evidence 检索（PAND-88）、F4 来源标注（PAND-82）、F5 四层下钻（PAND-83）等 | 未实现（后续 issue） |
+| F7 REPORT 视图（PAND-85）、F9 Decision 视图（PAND-87）、F10 Evidence 检索（PAND-88）、F4 来源标注（PAND-82）、F5 四层下钻（PAND-83）等 | 未实现（后续 issue） |
 
 ### F1 经营结果指标集（PAND-79）说明
 
@@ -42,6 +43,21 @@ EBMS 是**跨域结论汇聚 + 经营判断 + 追溯**层，面向决策者与�
 - **跳转落点**：前端 hash 路由 `#/report/<id>`、`#/todo/<id>`、`#/decision/<id>`、`#/evidence/<id>`，可直接作为直达链接，支持浏览器前进/后退。
 - **不涵盖**：关联的新增/解除目前只有后端接口与留痕，前端未提供编辑入口（导航为本 issue 的 AC 范围）。
 
+### F8 TODO 视图（PAND-86）说明
+
+TODO 视图聚合**待决策者 / 管理责任人处理**的事项，一屏可认领、指派并推进状态。
+
+- **七列齐备（场景 1）**：每条待办渲染 事项 / 来源 / 关联结果或原因 / 责任人 / 截止时间 / 状态 / 可执行动作。三处「空值」不留白——未关联渲染「未关联结果或原因」、未指派渲染「未指派」、无截止时间渲染「无截止时间」。
+- **两种来源并存（场景 2）**：`source` 取 `rule`（规则自动产生）与 `manual`（人工派发），**两条产生路径都真实存在**——规则引擎 `POST /todos/rule-scan` 扫描 F1 指标偏差与 F2 原因项产生待办；人工派发走 `POST /todos`。列表顶部常显「规则自动产生 N 条 / 人工派发 M 条」及**并存成立**判定，避免「名为聚合、实则只有一条来源」。
+- **规则幂等**：`rule_key = "<rule_code>:<ref_id>"` + 部分唯一索引，同一规则对同一锚点重复扫描只留一行（重复扫描返回 `created=[]`，不留第二条待办也不留第二条留痕）。
+- **状态三类齐备（场景 3）**：`pending 待处理 → in_progress 处理中 → done 已完成`，枚举由后端下发（前端不硬编码）。状态机只放行合法边：`pending→in_progress`、`in_progress→pending|done`，`done` 为**终态**（`allowedTransitions=[]`）；非法流转返回 400 `TODO_TRANSITION_INVALID` 并回带 `allowed` 空数组。列表与详情**只渲染状态机允许的动作按钮**，不出现注定被拒的入口。
+- **留痕（场景 3 判定标准）**：`todo.create` / `todo.rule_generate` / `todo.claim` / `todo.assign` / `todo.transition` 五类写入全部进 `audit_log`，含**操作人（id + 可读名）、时间、before/after**。详情页把 `before/after` 还原成「责任人：未指派 → 李责任（…）」「状态：待处理 → 处理中」的变更文案；状态码用后端下发的枚举翻译。
+- **筛选与逾期（场景 4）**：可按 责任人 / 状态 / 来源 / 截止时间（`due_before`，按本地当天结束解释）/ 是否逾期 过滤；逾期项带醒目「逾期 N 天」标记并进统计条。**逾期判定完全由后端按「截止时间 vs 当前时间」比较得出**，已完成项即使过期也不计入逾期。筛选生效时界面显式提示「上方计数为全部待办」，统计条不被筛选结果污染。
+- **边界（结构性封死）**：来源为 `rule` 的行**必须**带触发依据（规则编码 + 可读摘要 + 锚定的结果指标或原因项），库层 `CHECK todos_rule_trigger_required` 与业务层校验**双重保障**，缺一即拒收——不存在「来源是规则却查不到依据」的行。触发依据在详情页展开（期间 / 检出时间 / 锚定），责任人可据此核对「为什么派给我」。界面另设自检文案与缺失告警：正常时显示「规则自动产生的 N 条待办均含触发依据」，异常时改为「有 N 条自动产生的待办缺少触发依据」并在行内标记，**不静默**。
+- **认领与指派**：未指派且未完成的待办可**认领**（`POST /todos/:id/claim`，写入人即认领人，重复认领返回 409 `TODO_ALREADY_CLAIMED`）；也可由决策者**指派**给他人（`POST /todos/:id/assign`）。人工派发必须指明责任人（库层 `CHECK todos_manual_owner_required`）。
+- **展示口径（红线）**：前端**不自行判定逾期、不自行维护状态/来源枚举**，逾期标记、可流转动作、来源标签、关联对象可读名全部由接口下发，避免与后端状态机、逾期比较口径漂移。截止时间按**本地日历**渲染——接口返回 UTC 时刻，业务时区（UTC+8）的零点在 UTC 上是前一天 16:00，直接切 ISO 字符串会把「9-30 到期」显示成「9-29」。
+- **不涵盖**：TODO 的删除/归档；批量操作；责任人候选的组织架构下拉（当前为自由输入 `部门 / 姓名`）。
+
 ## 目录结构
 
 ```
@@ -58,33 +74,41 @@ ebms/
         migrations/001_init.sql   数据模型（证据 / 原因项 / 留痕）
         migrations/002_view_links.sql  四视图对象锚点 + object_links（F11）
         migrations/003_result_metrics.sql  Owner Result 收件箱 + 指标配置列（F1）
+        migrations/004_todos.sql   TODO 业务列 + 触发依据/责任人约束 + 规则幂等索引（F8）
       domain/
         evidence/                 证据域：类型枚举 / 仓储 / 服务（校验+用例）
         results/                  F1 指标域：来源口径 / Owner Result 仓储 / 指标仓储 / 服务
+        todos/                    F8 待办域：状态机 / 仓储 / 服务（认领·指派·流转）/ 规则引擎
         views/                    四视图对象注册表（唯一类型口径）+ 对象仓储（F11）
         links/                    交叉跳转关联：规范化配对 / 仓储 / 导航服务（F11）
         reason/                   原因项锚点（只读）
         audit/                    通用留痕仓储
       http/
-        routes/                   证据路由、四视图对象路由、指标集路由、开发登录路由
+        routes/                   证据路由、四视图对象路由、指标集路由、TODO 路由、开发登录路由
         middleware/               操作人识别、错误处理
       lib/token.js                HMAC-SHA256 签名 token
     test/evidence-ac.test.js      AC 逐条自动化验证（node:test）
     test/view-links-ac.test.js    F11 AC 逐条验证（可达性 / 落点 / 置灰 / 幂等 / 留痕）
     test/results-ac.test.js       F1 AC 逐条验证（口径红线 / 偏差 / 无数据 / 可追溯 / 幂等）
+    test/todos-ac.test.js         F8 AC 逐条验证（七列 / 两来源 / 三状态与流转 / 筛选逾期 / 触发依据）
   frontend/
     src/
-      App.vue                     登录 + 模块切换（经营结果 / 原因项证据 / 四视图导航），默认落地 F1
+      App.vue                     登录 + 模块切换（经营结果 / 原因项证据 / 四视图导航 / TODO 待办），默认落地 F1
       views/ResultOverviewView.vue F1 指标集视图（取数 + 状态）
       views/ReasonEvidenceView.vue 证据列表 / 无证据支撑提示 / 留痕
       views/ViewExplorer.vue      F11 四视图外壳：类型切换、对象清单、hash 路由
       views/ViewObjectDetail.vue  F11 对象落地页 + 交叉跳转入口
+      views/TodoListView.vue      F8 待办视图：筛选栏 + 列表/详情分栏 + 人工派发 + 规则扫描
       components/ResultMetricTable.vue F1 指标集纯展示组件（SSR 可测）
+      components/TodoTable.vue    F8 待办列表纯展示组件（七列 / 统计 / 逾期标记）
+      components/TodoDetailPanel.vue F8 详情面板（触发依据 + 流转留痕时间线 + 认领/指派/流转）
+      components/TodoCreateDialog.vue F8 人工派发表单
       components/                 详情面板、新增弹层、关联弹层、四视图导航栏
       result-overview.js          F1 展示模型纯逻辑（无数据文案 / 偏差 / 口径版本与证据）
+      todo-view.js                F8 展示模型纯逻辑（七列 / 逾期与筛选 / 留痕变更文案 / 本地日历日期）
       view-nav.js                 F11 导航纯逻辑（置灰判定 / 落点地址 / hash 解析）
       api/client.js               API 客户端
-    test/                         F1 / F11 前端单测（模型 + SSR 渲染断言）
+    test/                         F1 / F8 / F11 前端单测（模型 + SSR 渲染断言）
 ```
 
 ## 数据模型（本切片）
@@ -124,6 +148,25 @@ ebms/
   `CHECK (NOT (from_type = to_type AND from_id = to_id))` 禁止自关联。
 - `audit_log.action` 扩展 `view_link.create` / `view_link.delete`。
 
+**F8 TODO 视图（PAND-86，迁移 004）**
+
+- `todos` —— 由 F11 建锚点（`code` 唯一 + 最小展示字段），004 **追加业务列**：
+  `related_refs`（JSONB 数组，非空；服务端回源 `result_metrics`/`result_reasons` 解析 label 后落库，
+  前端只提交 `refId` 不提交 label，避免展示文案被伪造）、
+  `trigger_basis`（JSONB，仅 `source='rule'` 必填）、
+  `rule_key`（`"<rule_code>:<ref_id>"` 幂等键）、`updated_at`。
+  状态列 `status` 由 002 建（`pending|in_progress|done`），来源列 `source` 取 `rule|manual`。
+- **约束（数据相关，`NOT VALID`）**——存量行由 seed 按新口径重灌，对约束生效后写入的每一行强制；
+  `todos-ac.test.js` 在灌入夹具后执行 `VALIDATE CONSTRAINT`，证明库内数据全部合规：
+  - `todos_rule_trigger_required` —— **边界红线**：`source='rule'` 的行必须有
+    `trigger_basis.ruleCode` + `summary` 非空，且**必须锚定**到 `resultMetricId` 或 `reasonId`
+    （杜绝「只有规则名、查不到出处」的自动待办）。
+  - `todos_manual_owner_required` —— 人工派发必须有责任人（自动产生的可为空，等待被认领）。
+  - `todos_related_refs_array` —— `related_refs` 必须是 JSON 数组。
+- **索引**：`uq_todos_rule_key`（部分唯一，仅 `rule_key IS NOT NULL`）保证规则幂等；
+  `owner` / `status` / `due_at` / `source` 各一索引，支撑场景 4 的筛选与逾期扫描。
+- `audit_log.action` 扩展 `todo.create` / `todo.rule_generate` / `todo.claim` / `todo.assign` / `todo.transition`。
+
 **证据类型枚举**（业务方 2026-09-23 确认口径，唯一取值来源）：
 
 | code | label |
@@ -157,6 +200,14 @@ ebms/
 | GET | `/objects/{type}/{id}/links` | **F11 交叉跳转入口**：不带 `target_type` 返回三类入口（含 `disabled` / `hint`「无关联」）；带 `target_type` 返回该类型的关联对象平铺清单 |
 | POST | `/objects/{type}/{id}/links` | **F11** 建立关联（幂等；重复建立返回 200 且 `created=false`） |
 | DELETE | `/objects/{type}/{id}/links/{targetType}/{targetId}` | **F11** 解除关联（与建立方向无关） |
+| GET | `/todo-meta` | **F8** 状态 / 来源 / 规则 / 关联引用类型枚举（前端筛选栏唯一取值来源） |
+| GET | `/todos?owner=&status=&source=&due_before=&overdue=&limit=` | **F8 待办列表（场景 1/4）**：七列 + 逾期标记 + 筛选 + 汇总统计（`summary` 含 `bothSourcesPresent`） |
+| POST | `/todos/rule-scan` | **F8 规则自动产生（场景 2 来源之一）**：扫描 F1 指标偏差与 F2 原因项产生待办（幂等；`dryRun` 只返回候选不写库） |
+| GET | `/todos/{id}` | **F8 详情（场景 3）**：七列 + 触发依据 + 流转留痕时间线（含操作人 / 时间 / change） |
+| POST | `/todos` | **F8 人工派发（场景 2 来源之二）**：必须指明责任人 |
+| POST | `/todos/{id}/claim` | **F8 认领**：写入人即认领人；重复认领 409 `TODO_ALREADY_CLAIMED` |
+| POST | `/todos/{id}/assign` | **F8 指派**：指派给他人 |
+| POST | `/todos/{id}/transitions` | **F8 状态流转**：只放行状态机合法边，非法流转 400 `TODO_TRANSITION_INVALID` |
 | POST | `/auth/dev-login` | 开发环境签发操作人 token |
 
 写操作均需 `Authorization: Bearer <token>`，并写入留痕（操作人 + 时间）。
@@ -191,8 +242,8 @@ npm run dev                # http://127.0.0.1:5199（/api 已代理到后端）
 ## 自检
 
 ```bash
-cd ebms/backend && npm test        # 53 项：F3 + F11 + F1 的 AC 场景/边界/判定标准逐条断言
-cd ebms/frontend && npm test       # 31 项：F11 导航模型 / F1 指标集模型 + SSR 渲染断言
+cd ebms/backend && npm test        # 71 项：F3 + F11 + F1 + F8 的 AC 场景/边界/判定标准逐条断言
+cd ebms/frontend && npm test       # 51 项：F11 导航 / F1 指标集 / F8 待办模型 + SSR 渲染断言
 cd ebms/frontend && npm run build  # 前端构建
 ```
 
@@ -201,6 +252,16 @@ F1 夹具覆盖：12 条指标（M09 6 条 / M05 2 条 / M06 4 条）、11 条 O
 「来源模块未供给」），供无数据边界与「偏差一并无法计算」的断言使用。
 
 F11 夹具覆盖：6 组类型对（→ 12 个有向组合）各 1 条关联；`report`/`todo`/`decision`/`evidence` 各 1 个**无关联**对象（入口置灰边界）；1 个**部分关联** TODO（逐入口置灰）。
+
+F8 夹具覆盖：**两种来源并存**（规则自动产生 + 人工派发）、**三类状态齐备**（待处理 / 处理中 / 已完成）、
+指派与未指派、逾期 / 未逾期 / 无截止时间、触发依据的两种锚点（结果指标 / 原因项）、
+以及一条 `done` 终态项（验证「已完成不可回流、不再提供认领」）。
+后端 AC 用例额外覆盖：库层 `VALIDATE CONSTRAINT`（证明无「来源为规则却无触发依据」的行）、
+原始 `INSERT` 绕过服务层被拒、401 `AUTH_REQUIRED`、规则幂等（重复扫描不产生第二条）、
+`due_at = as_of + 7d` 与 F1 偏差集一致、「无数据不产生待办」。
+
+截止时间按**本地日历**渲染（接口返回 UTC 时刻），前端单测用 `localDate`/`localTime` 辅助断言，
+不绑定运行时区，并保留「非 UTC 时区下不得等于切字符串结果」的回归防线。
 
 浏览器端 AC 走查（真实浏览器 23 项检查）见 PAND-81 评论中的验证结果。
 
@@ -215,4 +276,11 @@ F11 夹具覆盖：6 组类型对（→ 12 个有向组合）各 1 条关联；`
 - **口径与证据随值同行**：每条实际值必须带 `calculation_version` 与 `evidence_ids`，缺任一项的 Result 拒收。
 - **无证据支撑**：接口返回 `evidenceStatus: NO_EVIDENCE`，前端渲染醒目告警 + 列表内显式提示。
 - **附件不暴露存储路径**：附件经后端流式返回，路径以 `basename` 收敛，避免目录穿越。
+- **自动产生的 TODO 必须可回溯**：`source='rule'` 的行必须带触发依据（规则编码 + 摘要 + 锚定的
+  结果指标或原因项），**库层约束 + 业务层校验双重保障**；触发依据在详情页对责任人可见，
+  回答「为什么派给我」。缺失时界面显式告警，不静默。
+- **状态机是唯一流转口径**：`pending → in_progress → done`，`done` 为终态；非法流转一律拒绝，
+  前端只渲染状态机允许的动作。状态 / 来源枚举由后端下发，前端不硬编码。
+- **逾期与日期口径**：逾期由后端按「截止时间 vs 当前时间」比较得出（已完成项不计入）；
+  日期筛选按本地当天结束解释；展示按**本地日历**渲染 UTC 时刻，避免跨时区偏移一天。
 - **不写入密钥**：`EBMS_AUTH_SECRET` 等由部署环境注入，`.env` 不入库。

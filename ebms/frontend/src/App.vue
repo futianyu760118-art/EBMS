@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { api, getToken, setToken } from './api/client';
 import ReasonEvidenceView from './views/ReasonEvidenceView.vue';
 import ResultOverviewView from './views/ResultOverviewView.vue';
+import TodoListView from './views/TodoListView.vue';
 import ViewExplorer from './views/ViewExplorer.vue';
 import { parseHash } from './view-nav';
 
@@ -67,8 +68,11 @@ function logout() {
 
 // F1 的证据引用指向 `#/evidence/<id>`（四视图落点）：落到该 hash 时自动切到四视图，
 // 使「由 evidence_ids 可定位到对应证据」在界面上是一次真实跳转。
+// F8 的 TODO 另有专属待办视图，故 `#/todo/<id>` 落到待办视图（同一套 hash 约定，可直达、可回退）。
 function syncFromHash() {
-  if (parseHash(window.location.hash)) activeModule.value = 'views';
+  const route = parseHash(window.location.hash);
+  if (!route) return;
+  activeModule.value = route.type === 'todo' ? 'todo' : 'views';
 }
 
 onMounted(() => {
@@ -110,6 +114,14 @@ const selectedReason = () => reasons.value.find((r) => r.id === selectedReasonId
           <button
             type="button"
             class="btn btn-ghost btn-sm"
+            :class="{ active: activeModule === 'todo' }"
+            @click="activeModule = 'todo'"
+          >
+            TODO 待办（F8）
+          </button>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
             :class="{ active: activeModule === 'views' }"
             @click="activeModule = 'views'"
           >
@@ -137,6 +149,10 @@ const selectedReason = () => reasons.value.find((r) => r.id === selectedReasonId
 
     <main v-else-if="activeModule === 'results'" class="layout-single">
       <ResultOverviewView />
+    </main>
+
+    <main v-else-if="activeModule === 'todo'" class="layout-single">
+      <TodoListView />
     </main>
 
     <main v-else-if="activeModule === 'views'" class="layout">

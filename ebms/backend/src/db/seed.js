@@ -49,9 +49,11 @@ const IDS = {
     orphan: 'cccccccc-0002-4000-8000-000000000002', // 无关联（边界）
   },
   todos: {
-    linked: 'dddddddd-0001-4000-8000-000000000001', // 关联 Report/Decision/Evidence
-    orphan: 'dddddddd-0002-4000-8000-000000000002', // 无关联（边界）
+    linked: 'dddddddd-0001-4000-8000-000000000001', // 关联 Report/Decision/Evidence（规则来源）
+    orphan: 'dddddddd-0002-4000-8000-000000000002', // 无关联（边界，人工派发）
     partial: 'dddddddd-0003-4000-8000-000000000003', // 仅关联 Evidence（逐入口置灰）
+    ruleUnclaimed: 'dddddddd-0004-4000-8000-000000000004', // 规则产生 + 未指派 + 已逾期（认领夹具）
+    done: 'dddddddd-0005-4000-8000-000000000005', // 已完成（状态枚举齐备 + 终态不判逾期）
   },
   decisions: {
     linked: 'eeeeeeee-0001-4000-8000-000000000001', // 关联 Report/TODO/Evidence
@@ -69,6 +71,99 @@ const VIEW_LINK_FIXTURES = [
   { from: ['decision', 'linked'], to: ['evidence', 'systemRecord'], relationType: 'evidences' },
   // 逐入口置灰用：仅一条关联，故其余两个入口应为「无关联」
   { from: ['todo', 'partial'], to: ['evidence', 'manualNote'], relationType: 'related' },
+];
+
+// F2 归因锚点夹具：F8 的规则触发依据（关联原因）与 TODO 的 related_refs 都取自此表。
+const REASON_FIXTURES = [
+  { key: 'capacity', name: '产能不足', direction: 'negative', contributionPct: 40.0, owner: '生产中心', order: 1 },
+  { key: 'channel', name: '渠道压货', direction: 'negative', contributionPct: 25.0, owner: '销售中心', order: 2 },
+  { key: 'material', name: '原材料涨价', direction: 'negative', contributionPct: 20.0, owner: '供应链中心', order: 3 },
+];
+
+// F8 TODO 夹具（PAND-86）：覆盖三类状态、两种来源、指派/未指派、逾期/未逾期/无截止时间。
+//   · source='rule' 的行必须带非空 trigger_basis（关联结果/原因 + 规则），由库层约束强制；
+//   · related_refs 的 label 与接口同口径，均按锚点表的权威名称落库。
+const TODO_FIXTURES = [
+  {
+    key: 'linked',
+    code: 'TODO-2026-0901',
+    title: '2号线排产调整以补产能缺口',
+    source: 'rule',
+    status: 'in_progress',
+    owner: '生产中心 / 赵计划',
+    dueAt: '2026-09-30T00:00:00+08:00',
+    ruleCode: 'R-REASON-NEGATIVE',
+    ruleAnchor: { refType: 'reason', key: 'capacity' },
+    triggerSummary: '原因项「产能不足」为负向归因，贡献占比 40%（阈值 20%）',
+    // 留痕时间线按状态机的合法边回放：pending → in_progress（认领 → 流转）
+    history: [
+      { action: 'todo.rule_generate', before: null, after: { source: 'rule' } },
+      { action: 'todo.claim', before: { owner: null }, after: { owner: '生产中心 / 赵计划' } },
+      { action: 'todo.transition', before: { status: 'pending' }, after: { status: 'in_progress' } },
+    ],
+  },
+  {
+    key: 'orphan',
+    code: 'TODO-2026-0902',
+    title: '华东渠道库存清理',
+    source: 'manual',
+    status: 'pending',
+    owner: '销售中心 / 孙渠道',
+    dueAt: '2026-10-15T00:00:00+08:00',
+    ruleCode: null,
+    ruleAnchor: { refType: 'reason', key: 'channel' },
+    triggerSummary: null,
+    history: [
+      { action: 'todo.create', before: null, after: { source: 'manual', owner: '销售中心 / 孙渠道' } },
+    ],
+  },
+  {
+    key: 'partial',
+    code: 'TODO-2026-0903',
+    title: '补充技改停产影响说明材料',
+    source: 'manual',
+    status: 'pending',
+    owner: '生产中心 / 钱厂长',
+    dueAt: null,
+    ruleCode: null,
+    ruleAnchor: null,
+    triggerSummary: null,
+    history: [
+      { action: 'todo.create', before: null, after: { source: 'manual', owner: '生产中心 / 钱厂长' } },
+    ],
+  },
+  {
+    key: 'ruleUnclaimed',
+    code: 'TODO-2026-0904',
+    title: '处理指标「订单交付达成率」偏差：当前 -13%，阈值 5%',
+    source: 'rule',
+    status: 'pending',
+    owner: null, // 自动产生且未被认领（认领流程夹具）
+    dueAt: '2026-09-20T00:00:00+08:00', // 已逾期
+    ruleCode: 'R-RESULT-DEVIATION',
+    ruleAnchor: { refType: 'result', key: 'orderDelivery' },
+    triggerSummary: 'month/2026-09 指标「订单交付达成率」偏差 -13（-13%），超过阈值 5%',
+    history: [
+      { action: 'todo.rule_generate', before: null, after: { source: 'rule' } },
+    ],
+  },
+  {
+    key: 'done',
+    code: 'TODO-2026-0905',
+    title: '完成9月产能复盘并归档结论',
+    source: 'manual',
+    status: 'done',
+    owner: '生产中心 / 赵计划',
+    dueAt: '2026-09-10T00:00:00+08:00', // 曾经过期，但已完成 → 不再判逾期
+    ruleCode: null,
+    ruleAnchor: null,
+    triggerSummary: null,
+    history: [
+      { action: 'todo.create', before: null, after: { source: 'manual', owner: '生产中心 / 赵计划' } },
+      { action: 'todo.transition', before: { status: 'pending' }, after: { status: 'in_progress' } },
+      { action: 'todo.transition', before: { status: 'in_progress' }, after: { status: 'done' } },
+    ],
+  },
 ];
 
 // F1 指标集夹具（PAND-79）：12 条，覆盖三家 Owner 模块（M09 财经 / M05 销售 / M06 交付）、
@@ -109,6 +204,24 @@ const OWNER_RESULT_FIXTURES = [
 const CONTRACT_FILE = '采购框架合同_SC-2026-014.pdf';
 const SEED_ACTOR_NAME = '李责任（管理责任人）';
 const SEED_PERIOD = { periodType: 'month', periodValue: '2026-09' };
+
+const RULE_LABELS = {
+  'R-RESULT-DEVIATION': '结果指标偏差达阈值',
+  'R-REASON-NEGATIVE': '原因项负向贡献达阈值',
+};
+
+/** TODO 的 related_refs：与接口同口径，按锚点表的权威名称落库（label 不由前端提供）。 */
+function buildSeedRelatedRefs(todo) {
+  if (!todo.ruleAnchor) return [];
+  const { refType, key } = todo.ruleAnchor;
+  if (refType === 'result') {
+    const metric = METRIC_FIXTURES.find((m) => m.key === key);
+    return [{ refType, refTypeLabel: '结果指标', refId: IDS.metrics[key], code: metric.code, label: metric.name }];
+  }
+  const reason = REASON_FIXTURES.find((r) => r.key === key);
+  return [{ refType, refTypeLabel: '原因项', refId: IDS.reasons[key], code: null, label: reason.name, direction: reason.direction }];
+}
+
 
 function minimalPdf(text) {
   const body = `BT /F1 12 Tf 40 750 Td (${text}) Tj ET`;
@@ -228,13 +341,21 @@ async function seed() {
       );
     }
 
-    await client.query(
-      `INSERT INTO result_reasons (id, metric_id, name, direction, contribution_pct, owner, order_no) VALUES
-         ($1, $4, '产能不足',     'negative', 40.00, '生产中心',   1),
-         ($2, $4, '渠道压货',     'negative', 25.00, '销售中心',   2),
-         ($3, $4, '原材料涨价',   'negative', 20.00, '供应链中心', 3)`,
-      [IDS.reasons.capacity, IDS.reasons.channel, IDS.reasons.material, IDS.metric]
-    );
+    for (const reason of REASON_FIXTURES) {
+      await client.query(
+        `INSERT INTO result_reasons (id, metric_id, name, direction, contribution_pct, owner, order_no)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          IDS.reasons[reason.key],
+          IDS.metric,
+          reason.name,
+          reason.direction,
+          reason.contributionPct,
+          reason.owner,
+          reason.order,
+        ]
+      );
+    }
 
     const evidenceRows = [
       {
@@ -346,13 +467,60 @@ async function seed() {
       [IDS.reports.linked, IDS.reports.orphan, IDS.users.owner]
     );
 
-    await client.query(
-      `INSERT INTO todos (id, code, title, source, status, owner, due_at, created_by) VALUES
-         ($1, 'TODO-2026-0901', '2号线排产调整以补产能缺口', 'rule',   'in_progress', '生产中心 / 赵计划', '2026-09-30T00:00:00+08:00', $4),
-         ($2, 'TODO-2026-0902', '华东渠道库存清理',           'manual', 'pending',     '销售中心 / 孙渠道', '2026-10-15T00:00:00+08:00', $4),
-         ($3, 'TODO-2026-0903', '补充技改停产影响说明材料',   'manual', 'pending',     '生产中心 / 钱厂长', NULL, $4)`,
-      [IDS.todos.linked, IDS.todos.orphan, IDS.todos.partial, IDS.users.owner]
-    );
+    // ---------------------------------------------------------------- F8 TODO（PAND-86）
+    for (const todo of TODO_FIXTURES) {
+      const relatedRefs = buildSeedRelatedRefs(todo);
+      const triggerBasis = todo.ruleCode
+        ? {
+            ruleCode: todo.ruleCode,
+            ruleLabel: RULE_LABELS[todo.ruleCode],
+            summary: todo.triggerSummary,
+            periodType: todo.ruleAnchor.refType === 'result' ? SEED_PERIOD.periodType : null,
+            periodValue: todo.ruleAnchor.refType === 'result' ? SEED_PERIOD.periodValue : null,
+            resultMetricId: todo.ruleAnchor.refType === 'result' ? relatedRefs[0].refId : null,
+            resultMetricCode: todo.ruleAnchor.refType === 'result' ? relatedRefs[0].code : null,
+            reasonId: todo.ruleAnchor.refType === 'reason' ? relatedRefs[0].refId : null,
+            detectedAt: '2026-09-24T00:00:00+08:00',
+          }
+        : null;
+      const ruleKey = todo.ruleCode ? `${todo.ruleCode}:${relatedRefs[0].refId}` : null;
+
+      const inserted = await client.query(
+        `INSERT INTO todos
+           (id, code, title, source, status, owner, due_at, related_refs, trigger_basis, rule_key, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11)
+         RETURNING id`,
+        [
+          IDS.todos[todo.key],
+          todo.code,
+          todo.title,
+          todo.source,
+          todo.status,
+          todo.owner,
+          todo.dueAt,
+          JSON.stringify(relatedRefs),
+          triggerBasis ? JSON.stringify(triggerBasis) : null,
+          ruleKey,
+          IDS.users.owner,
+        ]
+      );
+
+      // 留痕时间线：按夹具声明的历史动作逐条回放，使详情页的流转留痕可直接用于走查。
+      for (const step of todo.history) {
+        await client.query(
+          `INSERT INTO audit_log (actor, actor_name, action, entity_type, entity_id, reason_id, before, after)
+           VALUES ($1, $2, $3, 'todo', $4, NULL, $5::jsonb, $6::jsonb)`,
+          [
+            IDS.users.owner,
+            SEED_ACTOR_NAME,
+            step.action,
+            String(inserted.rows[0].id),
+            step.before ? JSON.stringify(step.before) : null,
+            step.after ? JSON.stringify({ ...step.after, code: todo.code, title: todo.title }) : null,
+          ]
+        );
+      }
+    }
 
     await client.query(
       `INSERT INTO decisions (id, code, title, background, conclusion, status, decider, decided_at, created_by) VALUES
@@ -394,6 +562,8 @@ async function seed() {
     console.log('[seed]   指标集         :', METRIC_FIXTURES.length, '条（M09 财经 6 / M05 销售 2 / M06 交付 4）');
     console.log('[seed]   Owner Result   :', OWNER_RESULT_FIXTURES.length, '条（实际值唯一来源）');
     console.log('[seed]   无数据边界     : on_time_delivery（未供给）/ new_customer_count（未同步本期）');
+    console.log('[seed]   TODO           :', TODO_FIXTURES.length, '条（规则 2 / 人工 3；待处理 3 / 处理中 1 / 已完成 1）');
+    console.log('[seed]   逾期/未指派    : TODO-2026-0904（规则产生、未指派、已逾期 → 认领夹具）');
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -411,4 +581,14 @@ if (require.main === module) {
     });
 }
 
-module.exports = { seed, IDS, CONTRACT_FILE, VIEW_LINK_FIXTURES, METRIC_FIXTURES, OWNER_RESULT_FIXTURES, SEED_PERIOD };
+module.exports = {
+  seed,
+  IDS,
+  CONTRACT_FILE,
+  VIEW_LINK_FIXTURES,
+  METRIC_FIXTURES,
+  OWNER_RESULT_FIXTURES,
+  REASON_FIXTURES,
+  TODO_FIXTURES,
+  SEED_PERIOD,
+};
