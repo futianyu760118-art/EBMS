@@ -13,10 +13,17 @@ import AttributionCard from './components/AttributionCard.vue';
 import ResultCard from './components/ResultCard.vue';
 import EvidenceStrip from './components/EvidenceStrip.vue';
 import EmptyStateNotice from './components/EmptyStateNotice.vue';
+import ReasonDrilldown from './views/ReasonDrilldown.vue';
+
+const PAGES = [
+  { key: 'reason', label: '偏差归因穿透', hint: '从结果指标穿透到原因项' },
+  { key: 'reverse', label: '反向链路查询', hint: '从 Source / Evidence 反查原因与结果' },
+];
 
 const store = createReverseNavigationStore({ api });
 const { state } = store;
 
+const page = ref('reason');
 const sourceSystems = ref([]);
 const summary = computed(() => summarize(state.result));
 const isReversePayload = computed(() => Boolean(state.result?.entry && state.result.attributions));
@@ -38,13 +45,29 @@ function onJump(item) {
 <template>
   <main class="page">
     <header class="page__head">
-      <h1>反向链路查询</h1>
+      <h1>EBMS 归因与链路穿透</h1>
       <p class="page__sub">
-        从 Source 或 Evidence 反向查到其影响的原因项与最终结果指标 ——
-        沿契约链 <code>Result ← Exception（归因）← Evidence ← source_system</code>，只读。
+        沿契约链 <code>Result ⇄ Exception（归因）⇄ Evidence ⇄ source_system</code> 双向穿透，只读为主。
       </p>
+      <nav class="pagetabs" role="tablist">
+        <button
+          v-for="item in PAGES"
+          :key="item.key"
+          type="button"
+          role="tab"
+          class="modes__btn"
+          :class="{ 'modes__btn--active': page === item.key }"
+          :aria-selected="page === item.key"
+          @click="page = item.key"
+        >
+          {{ item.label }}
+        </button>
+      </nav>
     </header>
 
+    <ReasonDrilldown v-if="page === 'reason'" />
+
+    <template v-else>
     <section class="panel">
       <div class="modes" role="tablist">
         <button
@@ -143,5 +166,6 @@ function onJump(item) {
       （{{ state.jump.contract }}）
       <code>{{ state.jump.path }}</code>
     </p>
+    </template>
   </main>
 </template>

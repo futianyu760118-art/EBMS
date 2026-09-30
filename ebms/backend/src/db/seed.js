@@ -4,10 +4,15 @@
  * 这是全库唯一的写入口 —— 反向查询链路在代码层面无法写库（仓储只有 SELECT）。
  *
  * 数据覆盖 AC 前置条件与边界：
- *   - 3 条 Result（毛利率 / 按期交付率 / 库存周转天数），由 M09 / M06 / M11 供给；
- *   - 10 条归因项，含 Exception 型与 M03 自有归因分析型，且覆盖多级展开；
+ *   - 6 条 Result（毛利率 / 按期交付率 / 库存周转天数 / 营业收入 / 净利润 / 订单积压量），
+ *     由 M09 / M06 / M05 供给；
+ *   - 17 条归因项，含 Exception 型与 M03 自有归因分析型，覆盖三级展开
+ *     （A-REV1 → A-REV1-1 → A-REV1-1-1）与「只给影响量、不给贡献占比」的条目；
  *   - 14 条 Evidence，含 1 条 source_system 未标注、1 条无任何归因关联（空态用）；
- *   - 15 组 (Evidence, Result) 关联对，满足「抽样不少于 10 条比对」。
+ *   - 22 组 (Evidence, Result) 关联对，满足「抽样不少于 10 条比对」。
+ *
+ * F2（PAND-80）夹具形态：营业收入 = 完全归因（100%）、净利润 = 部分归因（45%）、
+ * 订单积压量 = 未归因（无任何原因项，供「未归因 + 关联入口」边界使用）。
  */
 
 const NOW = '2026-09-26T10:00:00+08:00';
@@ -46,14 +51,60 @@ const METRICS = [
     result_id: 'RES-INV-202609',
     code: 'inventory_turnover_days',
     name: '库存周转天数',
-    source_system: 'M11',
+    // F2 判定标准要求「均可溯源到专业模块 Result」：M11 是 Connector，不是指标 Owner；
+    // 按 Data Ownership（Material / Supplier / Procurement → M06）与 PAND-79 口径改为 M06。
+    source_system: 'M06',
     object_id: 'inventory_turnover_days',
     period_type: 'month',
     period_value: '2026-09',
     target: 45,
     actual: 58,
     unit: 'day',
-    calculation_version: 'M11-INV-V1',
+    calculation_version: 'M06-INV-V1',
+  },
+  // ---- F2（PAND-80）夹具 ----
+  {
+    id: 'M-REV',
+    result_id: 'RES-REV-202609',
+    code: 'revenue',
+    name: '营业收入',
+    source_system: 'M05',
+    object_id: 'revenue',
+    period_type: 'month',
+    period_value: '2026-09',
+    target: 1000,
+    actual: 880,
+    unit: 'currency',
+    calculation_version: 'M05-REV-V1',
+  },
+  {
+    id: 'M-PROFIT',
+    result_id: 'RES-PROFIT-202609',
+    code: 'net_profit',
+    name: '净利润',
+    source_system: 'M09',
+    object_id: 'net_profit',
+    period_type: 'month',
+    period_value: '2026-09',
+    target: 120,
+    actual: 96,
+    unit: 'currency',
+    calculation_version: 'M09-PROFIT-V1',
+  },
+  {
+    // AC 边界「未归因」夹具：该指标没有任何关联原因项
+    id: 'M-BACKLOG',
+    result_id: 'RES-BACKLOG-202609',
+    code: 'order_backlog',
+    name: '订单积压量',
+    source_system: 'M05',
+    object_id: 'order_backlog',
+    period_type: 'month',
+    period_value: '2026-09',
+    target: 200,
+    actual: 265,
+    unit: 'count',
+    calculation_version: 'M05-BACKLOG-V1',
   },
 ];
 
@@ -63,6 +114,10 @@ const EXCEPTIONS = [
   { id: 'X-DELAY1', exception_id: 'EXC-DELAY-001', source_system: 'M06', object_type: 'DeliveryOrder', object_id: 'SO-2026-09', reason_code: 'DELIVERY_RISK', severity: 'high' },
   { id: 'X-QUAL1', exception_id: 'EXC-QUALITY-001', source_system: 'M06', object_type: 'InspectionLot', object_id: 'QC-2026-09', reason_code: 'QUALITY_REJECT', severity: 'high' },
   { id: 'X-STOCK1', exception_id: 'EXC-STOCK-001', source_system: 'M11', object_type: 'InventoryLot', object_id: 'INV-2026-09', reason_code: 'SLOW_MOVING_STOCK', severity: 'medium' },
+  // F2（PAND-80）夹具：由 M05 销售自治供给的 Exception（EBMS 只消费，不新建）
+  { id: 'X-SALES1', exception_id: 'EXC-SALES-001', source_system: 'M05', object_type: 'SalesOrder', object_id: 'SO-2026-09', reason_code: 'LOW_PRICE_ORDER', severity: 'high' },
+  { id: 'X-SALES2', exception_id: 'EXC-SALES-002', source_system: 'M05', object_type: 'Customer', object_id: 'CUS-2026-09', reason_code: 'KEY_ACCOUNT_CHURN', severity: 'medium' },
+  { id: 'X-SALES3', exception_id: 'EXC-SALES-003', source_system: 'M05', object_type: 'DeliveryOrder', object_id: 'SO-2026-09', reason_code: 'DELIVERY_SLIP', severity: 'low' },
 ];
 
 const EVIDENCES = [
@@ -98,6 +153,18 @@ const ATTRIBUTIONS = [
   { id: 'A-STOCK1', metric_id: 'M-INV', parent_id: null, kind: 'exception', exception_id: 'X-STOCK1', analysis_name: null, direction: 'negative', contribution_pct: 60, owner: '供应链中心', order_no: 1 },
   { id: 'A-COST2-INV', metric_id: 'M-INV', parent_id: null, kind: 'exception', exception_id: 'X-COST2', analysis_name: null, direction: 'negative', contribution_pct: 15, owner: '供应链中心', order_no: 2 },
   { id: 'A-SAFETY', metric_id: 'M-INV', parent_id: null, kind: 'm03_analysis', exception_id: null, analysis_name: '安全库存策略偏保守', direction: 'negative', contribution_pct: 25, owner: 'M03', order_no: 3 },
+
+  // ---- F2（PAND-80）夹具 ----
+  // 完全归因（顶层 50 + 30 + 20 = 100%）且含三级展开：L1 → L2 → L3
+  { id: 'A-REV1', metric_id: 'M-REV', parent_id: null, kind: 'exception', exception_id: 'X-SALES1', analysis_name: null, direction: 'negative', contribution_pct: 50, impact_value: null, owner: '销售中心', order_no: 1 },
+  { id: 'A-REV1-1', metric_id: 'M-REV', parent_id: 'A-REV1', kind: 'exception', exception_id: 'X-SALES2', analysis_name: null, direction: 'negative', contribution_pct: 60, impact_value: null, owner: '销售中心', order_no: 1 },
+  { id: 'A-REV1-1-1', metric_id: 'M-REV', parent_id: 'A-REV1-1', kind: 'm03_analysis', exception_id: null, analysis_name: '大客户转投竞品', direction: 'negative', contribution_pct: null, impact_value: -12, owner: 'M03', order_no: 1 },
+  { id: 'A-REV2', metric_id: 'M-REV', parent_id: null, kind: 'm03_analysis', exception_id: null, analysis_name: '渠道结构变化', direction: 'negative', contribution_pct: 30, impact_value: null, owner: 'M03', order_no: 2 },
+  { id: 'A-REV3', metric_id: 'M-REV', parent_id: null, kind: 'exception', exception_id: 'X-SALES3', analysis_name: null, direction: 'negative', contribution_pct: 20, impact_value: null, owner: '交付中心', order_no: 3 },
+
+  // 部分归因（顶层仅 A-PROFIT1 带占比 = 45%，A-PROFIT2 只给影响量）
+  { id: 'A-PROFIT1', metric_id: 'M-PROFIT', parent_id: null, kind: 'exception', exception_id: 'X-COST1', analysis_name: null, direction: 'negative', contribution_pct: 45, impact_value: null, owner: '生产·交付中心', order_no: 1 },
+  { id: 'A-PROFIT2', metric_id: 'M-PROFIT', parent_id: null, kind: 'm03_analysis', exception_id: null, analysis_name: '期间费用上升', direction: 'negative', contribution_pct: null, impact_value: -18, owner: 'M03', order_no: 2 },
 ];
 
 // [attribution_id, evidence_id]
@@ -119,6 +186,14 @@ const LINKS = [
   ['A-PLAN', 'V-PLAN'],
   ['A-STOCK1', 'V-WMS'],
   ['A-SAFETY', 'V-INV1'],
+  // F2（PAND-80）：均避开 MES 来源与 V-BOM / V-FIN2，保持既有反向断言不变
+  ['A-REV1', 'V-CRM'],
+  ['A-REV1-1', 'V-PLAN'],
+  ['A-REV1-1-1', 'V-INV1'],
+  ['A-REV2', 'V-CRM'],
+  ['A-REV3', 'V-PLAN'],
+  ['A-PROFIT1', 'V-FIN1'],
+  ['A-PROFIT2', 'V-INV1'],
 ];
 
 const SEED_AUDIT = [
@@ -171,13 +246,13 @@ export function seedChain(db) {
   const insertAttribution = db.prepare(`
     INSERT INTO attributions
       (id, metric_id, parent_id, kind, exception_id, analysis_name,
-       direction, contribution_pct, owner, order_no, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       direction, contribution_pct, impact_value, owner, order_no, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const a of ATTRIBUTIONS) {
     insertAttribution.run(
       a.id, a.metric_id, a.parent_id, a.kind, a.exception_id, a.analysis_name,
-      a.direction, a.contribution_pct, a.owner, a.order_no, NOW,
+      a.direction, a.contribution_pct, a.impact_value ?? null, a.owner, a.order_no, NOW,
     );
   }
 

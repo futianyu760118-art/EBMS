@@ -1,5 +1,5 @@
 /**
- * 反向链路接口客户端。
+ * EBMS 接口客户端（反向链路查询 + 结果偏差归因穿透）。
  *
  * 平台请求封装（鉴权头由 M01 Kernel 下发的 token 提供，前端不自建身份体系）。
  */
@@ -23,6 +23,7 @@ async function request(path, options = {}) {
 
 export const api = {
   get: (path) => request(path, { method: 'GET' }),
+  post: (path, body) => request(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
 };
 
 export function createApi(overrides = {}) {

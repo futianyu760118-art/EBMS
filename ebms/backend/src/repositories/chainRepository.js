@@ -153,6 +153,40 @@ export function createChainRepository(db) {
       ).map(mapAttribution);
     },
 
+    /** 单条归因项（F2：多级展开与类型判定的锚点）。 */
+    getAttributionById(id) {
+      return mapAttribution(
+        one(
+          `SELECT ${ATTRIBUTION_COLUMNS}
+             FROM attributions a
+             LEFT JOIN exceptions e ON e.id = a.exception_id
+            WHERE a.id = ?`,
+          id,
+        ),
+      );
+    },
+
+    /**
+     * 归因项 → 其所属 Result 的专业来源声明（F2 判定标准：可溯源、无自建事实源）。
+     * 仅经由 `result_metrics`（Result 契约）取出，不访问任何专业原始表。
+     */
+    listAttributionFactSources() {
+      return all(
+        `SELECT a.id AS attribution_id, a.metric_id, m.code AS metric_code,
+                m.result_id, m.source_system, m.calculation_version
+           FROM attributions a
+           JOIN result_metrics m ON m.id = a.metric_id
+          ORDER BY a.metric_id, a.parent_id IS NOT NULL, a.order_no, a.id`,
+      ).map((row) => ({
+        attributionId: row.attribution_id,
+        metricId: row.metric_id,
+        metricCode: row.metric_code,
+        resultId: row.result_id,
+        sourceSystem: row.source_system,
+        calculationVersion: row.calculation_version,
+      }));
+    },
+
     listEvidencesByAttribution(attributionId) {
       return all(
         `SELECT ${EVIDENCE_COLUMNS}
