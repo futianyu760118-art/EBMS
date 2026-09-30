@@ -60,6 +60,14 @@ export const api = {
   ownerResults: (query = '') => request(`/owner-results${query}`),
   receiveOwnerResult: (input) => request('/owner-results', { method: 'POST', body: input, auth: true }),
 
+  // F4（PAND-82）证据来源标注
+  sourceCatalog: () => request('/source-catalog'),
+  sourceStats: (query = '') => request(`/sources/stats${query}`),
+  missingSources: (query = '') => request(`/sources/missing${query}`),
+  sourceDetail: (evidenceId) => request(`/evidences/${evidenceId}/source`),
+  annotateSource: (evidenceId, input) =>
+    request(`/evidences/${evidenceId}/source`, { method: 'PUT', body: input, auth: true }),
+
   // F11（PAND-89）四视图对象交叉跳转
   viewObjectTypes: () => request('/view-object-types'),
   viewObjects: (type) => request(`/objects/${type}`),

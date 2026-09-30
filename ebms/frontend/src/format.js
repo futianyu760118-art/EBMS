@@ -2,6 +2,9 @@ const AUDIT_LABELS = {
   'evidence.create': '新增',
   'evidence.link': '关联',
   'evidence.unlink': '解除关联',
+  // F4（PAND-82）来源标注：首次标注与后续更正分别留痕
+  'evidence.source.annotate': '标注来源',
+  'evidence.source.update': '更正来源',
 };
 
 export function formatDateTime(value) {

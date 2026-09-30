@@ -2,6 +2,7 @@
 import { onMounted, ref, watch } from 'vue';
 import { api } from '../api/client';
 import { auditLabel, formatDateTime, formatDateTimeLong } from '../format';
+import { buildSourceSummary } from '../source-view';
 import EvidenceDetailPanel from '../components/EvidenceDetailPanel.vue';
 import EvidenceCreateDialog from '../components/EvidenceCreateDialog.vue';
 import EvidenceLinkDialog from '../components/EvidenceLinkDialog.vue';
@@ -20,6 +21,7 @@ const error = ref('');
 const notice = ref('');
 
 const detail = ref(null);
+const detailSource = ref(null);
 const detailOpen = ref(false);
 const detailLoading = ref(false);
 const showCreate = ref(false);
@@ -43,8 +45,12 @@ async function openDetail(item) {
   detailOpen.value = true;
   detailLoading.value = true;
   detail.value = null;
+  detailSource.value = null;
   try {
-    detail.value = await api.evidenceDetail(item.id);
+    // F4：来源明细与证据详情并行取，详情面板一次渲染出「来源（Source）」区块
+    const [evidence, source] = await Promise.all([api.evidenceDetail(item.id), api.sourceDetail(item.id)]);
+    detail.value = evidence;
+    detailSource.value = source;
   } catch (err) {
     error.value = err.message;
     detailOpen.value = false;
@@ -56,6 +62,12 @@ async function openDetail(item) {
 function closeDetail() {
   detailOpen.value = false;
   detail.value = null;
+  detailSource.value = null;
+}
+
+/** 列表行的来源摘要（含「来源缺失」标记）。 */
+function sourceCell(item) {
+  return buildSourceSummary(item.source);
 }
 
 function openCreate() {
@@ -148,12 +160,13 @@ onMounted(load);
             <th>标题</th>
             <th>形成时间</th>
             <th>责任人</th>
+            <th>来源</th>
             <th class="col-actions">详情入口</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="data.items.length === 0">
-            <td colspan="5" class="empty-cell">无证据支撑 —— 该原因项尚未挂载任何证据。</td>
+            <td colspan="6" class="empty-cell">无证据支撑 —— 该原因项尚未挂载任何证据。</td>
           </tr>
           <tr v-for="item in data.items" :key="item.id">
             <td><span class="tag">{{ item.typeLabel }}</span></td>
@@ -165,6 +178,13 @@ onMounted(load);
             </td>
             <td>{{ formatDateTime(item.formedAt) }}</td>
             <td>{{ item.owner }}</td>
+            <td>
+              <span v-if="sourceCell(item).missing" class="tag tag-warn">{{ sourceCell(item).marker }}</span>
+              <template v-else>
+                <span>{{ sourceCell(item).label }}</span>
+                <span v-if="sourceCell(item).typeLabel" class="muted">（{{ sourceCell(item).typeLabel }}）</span>
+              </template>
+            </td>
             <td class="col-actions">
               <button class="btn btn-sm" type="button" @click="openDetail(item)">查看详情</button>
               <button
@@ -196,6 +216,7 @@ onMounted(load);
     <EvidenceDetailPanel
       v-if="detailOpen"
       :evidence="detail"
+      :source="detailSource"
       :loading="detailLoading"
       @close="closeDetail"
     />

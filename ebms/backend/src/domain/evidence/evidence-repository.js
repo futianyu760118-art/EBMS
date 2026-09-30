@@ -5,18 +5,42 @@ const { query } = require('../../db/pool');
 const SELECT_FIELDS = `
   e.id, e.type, e.title, e.formed_at, e.owner, e.content,
   e.attachment_refs, e.created_by, e.created_at,
+  e.source_type, e.source_system, e.source_document_no, e.source_data_time,
+  e.source_update_cycle, e.source_provider, e.source_entered_by, e.source_entered_at,
   u.display_name AS created_by_name
 `;
 
 // 录入人展示名：外键以文本保存，回退到原始值以免历史数据失去可读性。
 const CREATOR_JOIN = 'LEFT JOIN ebms_users u ON u.id::text = e.created_by';
 
-async function insert(client, { type, title, formedAt, owner, content, attachmentRefs, createdBy }) {
+/** 来源标注可随新增一并写入（PAND-82），缺省则证据处于「来源缺失」待补状态。 */
+async function insert(client, { type, title, formedAt, owner, content, attachmentRefs, createdBy, source = null }) {
+  const s = source || {};
   const { rows } = await client.query(
-    `INSERT INTO evidences (type, title, formed_at, owner, content, attachment_refs, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
-     RETURNING id, type, title, formed_at, owner, content, attachment_refs, created_by, created_at`,
-    [type, title, formedAt, owner, content ?? null, JSON.stringify(attachmentRefs || []), createdBy]
+    `INSERT INTO evidences (type, title, formed_at, owner, content, attachment_refs, created_by,
+                            source_type, source_system, source_document_no, source_data_time,
+                            source_update_cycle, source_provider, source_entered_by, source_entered_at)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+     RETURNING id, type, title, formed_at, owner, content, attachment_refs, created_by, created_at,
+               source_type, source_system, source_document_no, source_data_time,
+               source_update_cycle, source_provider, source_entered_by, source_entered_at`,
+    [
+      type,
+      title,
+      formedAt,
+      owner,
+      content ?? null,
+      JSON.stringify(attachmentRefs || []),
+      createdBy,
+      s.sourceType ?? null,
+      s.sourceSystem ?? null,
+      s.sourceDocumentNo ?? null,
+      s.sourceDataTime ?? null,
+      s.updateCycle ?? null,
+      s.sourceProvider ?? null,
+      s.enteredBy ?? null,
+      s.enteredAt ?? null,
+    ]
   );
   return rows[0];
 }

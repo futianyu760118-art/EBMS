@@ -6,6 +6,7 @@ const { isValidEvidenceType, listEvidenceTypes, labelOf, EVIDENCE_TYPE_CODES } =
 const evidenceRepo = require('./evidence-repository');
 const reasonRepo = require('../../domain/reason/reason-repository');
 const auditRepo = require('../audit/audit-repository');
+const sourceService = require('../source/source-service');
 
 // ---------------------------------------------------------------- 序列化
 
@@ -27,6 +28,8 @@ function serializeEvidence(row) {
       // 带附件的证据可预览或下载：由后端流式返回，不直接暴露存储路径
       url: `/api/v1/evidences/${row.id}/attachments/${index}`,
     })),
+    // PAND-82：列表也要能一眼看出「来源缺失」，完整来源明细走 /evidences/{id}/source
+    source: sourceService.serializeSourceSummary(row),
     createdBy: row.created_by_name || row.created_by,
     createdById: row.created_by,
     createdAt: row.created_at,
@@ -214,11 +217,18 @@ async function createEvidence(actor, input) {
     attachmentRefs: normalizeAttachments(input.attachmentRefs),
   };
 
+  // PAND-82 前置条件：证据应关联至少 1 个 Source。
+  // 未随新增给出 source 的证据落为「来源缺失」并进入待补清单，由
+  // PUT /evidences/{id}/source 补齐——不阻断既有流程，缺失率仍可统计。
+  const source = input.source === undefined || input.source === null
+    ? null
+    : sourceService.validateSourceInput(input.source);
+
   const reasonId = input.reasonId ?? null;
   if (reasonId) await requireReason(reasonId);
 
   const createdId = await withTransaction(async (client) => {
-    const created = await evidenceRepo.insert(client, { ...payload, createdBy: actor.id });
+    const created = await evidenceRepo.insert(client, { ...payload, source, createdBy: actor.id });
 
     const createAudit = await auditRepo.record(client, {
       actor: actor.id,
@@ -227,7 +237,13 @@ async function createEvidence(actor, input) {
       entityType: 'evidence',
       entityId: created.id,
       reasonId,
-      after: { type: created.type, title: created.title, formedAt: created.formed_at, owner: created.owner },
+      after: {
+        type: created.type,
+        title: created.title,
+        formedAt: created.formed_at,
+        owner: created.owner,
+        source,
+      },
     });
 
     if (reasonId) {

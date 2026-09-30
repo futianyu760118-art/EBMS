@@ -1,11 +1,18 @@
 <script setup>
+import { computed } from 'vue';
 import { formatBytes, formatDateTimeLong } from '../format';
+import { buildSourceView } from '../source-view';
+import SourceDetailPanel from './SourceDetailPanel.vue';
 
 const props = defineProps({
   evidence: { type: Object, default: null },
+  // F4（PAND-82）来源明细：GET /evidences/:id/source 的原始回包
+  source: { type: Object, default: null },
   loading: { type: Boolean, default: false },
 });
 const emit = defineEmits(['close']);
+
+const sourceModel = computed(() => (props.source ? buildSourceView(props.source) : null));
 
 function previewUrl(attachment) {
   return attachment.url;
@@ -45,6 +52,8 @@ function downloadUrl(attachment) {
           <dt v-if="evidence.linkedAt">关联时间</dt>
           <dd v-if="evidence.linkedAt">{{ formatDateTimeLong(evidence.linkedAt) }}</dd>
         </dl>
+
+        <SourceDetailPanel :model="sourceModel" />
 
         <section class="detail-section">
           <h3>文本说明</h3>

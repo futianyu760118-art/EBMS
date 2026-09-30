@@ -106,6 +106,58 @@ const OWNER_RESULT_FIXTURES = [
   { resultId: 'res-M05-new-customer-2026-08', metricKey: 'newCustomerCount', sourceSystem: 'M05', metricName: '新增客户数', value: 37, unit: '家', calculationVersion: 'SALES-CUST-2026.08-v1', traceId: 'trace-sales-202608-cust', evidenceKeys: ['orderLedger'], periodValue: '2026-08', occurredAt: '2026-08-31T23:59:59+08:00' },
 ];
 
+// F4 来源标注夹具（PAND-82）：覆盖内部系统 / 外部数据 / 人工录入三类，
+// 并**刻意留 1 条未标注来源**（生产工单 GW-2026-0901）作为「来源缺失 / 待补清单」边界。
+// 口径：外部数据必须带提供方；人工录入必须带录入人与录入时间。
+const SOURCE_FIXTURES = {
+  contract: {
+    sourceType: 'external',
+    sourceSystem: '供应商门户 SRM',
+    sourceDocumentNo: 'SC-2026-014',
+    sourceDataTime: '2026-08-15T00:00:00+08:00',
+    updateCycle: 'month',
+    sourceProvider: 'A 供应商（外部）',
+  },
+  systemRecord: {
+    sourceType: 'internal',
+    sourceSystem: 'MES 生产执行系统',
+    sourceDocumentNo: 'MES-CAP-2026-09',
+    sourceDataTime: '2026-09-20T00:00:00+08:00',
+    updateCycle: 'day',
+  },
+  manualNote: {
+    sourceType: 'manual',
+    sourceSystem: '生产中心人工台账',
+    // 人工录入常无内部单据号：留空以覆盖「非判定项待补提示」
+    sourceDataTime: '2026-09-10T00:00:00+08:00',
+    updateCycle: 'week',
+    enteredBy: '钱厂长',
+    enteredAt: '2026-09-10T09:30:00+08:00',
+  },
+  warehouse: {
+    sourceType: 'internal',
+    sourceSystem: 'WMS 仓储系统',
+    sourceDocumentNo: 'WMS-INV-2026-09',
+    sourceDataTime: '2026-09-18T00:00:00+08:00',
+    updateCycle: 'month',
+  },
+  financeReport: {
+    sourceType: 'internal',
+    sourceSystem: 'M09 财经中心',
+    sourceDocumentNo: 'FIN-MR-2026-09',
+    sourceDataTime: '2026-09-30T00:00:00+08:00',
+    updateCycle: 'month',
+  },
+  orderLedger: {
+    sourceType: 'internal',
+    sourceSystem: 'M05 销售中心',
+    sourceDocumentNo: 'SALES-ORD-2026-09',
+    sourceDataTime: '2026-09-28T00:00:00+08:00',
+    updateCycle: 'month',
+  },
+  // document（生产工单 GW-2026-0901）刻意不在此：来源缺失边界
+};
+
 const CONTRACT_FILE = '采购框架合同_SC-2026-014.pdf';
 const SEED_ACTOR_NAME = '李责任（管理责任人）';
 const SEED_PERIOD = { periodType: 'month', periodValue: '2026-09' };
@@ -310,6 +362,32 @@ async function seed() {
       );
     }
 
+    // 为 6 条证据标注来源；document 保持「来源缺失」，进入待补清单。
+    for (const [key, s] of Object.entries(SOURCE_FIXTURES)) {
+      await client.query(
+        `UPDATE evidences
+            SET source_type = $2, source_system = $3, source_document_no = $4, source_data_time = $5,
+                source_update_cycle = $6, source_provider = $7, source_entered_by = $8, source_entered_at = $9
+          WHERE id = $1`,
+        [
+          IDS.evidences[key],
+          s.sourceType,
+          s.sourceSystem,
+          s.sourceDocumentNo ?? null,
+          s.sourceDataTime,
+          s.updateCycle ?? null,
+          s.sourceProvider ?? null,
+          s.enteredBy ?? null,
+          s.enteredAt ?? null,
+        ]
+      );
+      await client.query(
+        `INSERT INTO audit_log (actor, actor_name, action, entity_type, entity_id, reason_id, after)
+         VALUES ($1, $2, 'evidence.source.annotate', 'evidence', $3, NULL, $4::jsonb)`,
+        [IDS.users.owner, SEED_ACTOR_NAME, IDS.evidences[key], JSON.stringify(s)]
+      );
+    }
+
     const links = [
       [IDS.reasons.capacity, IDS.evidences.contract],
       [IDS.reasons.capacity, IDS.evidences.document],
@@ -394,6 +472,11 @@ async function seed() {
     console.log('[seed]   指标集         :', METRIC_FIXTURES.length, '条（M09 财经 6 / M05 销售 2 / M06 交付 4）');
     console.log('[seed]   Owner Result   :', OWNER_RESULT_FIXTURES.length, '条（实际值唯一来源）');
     console.log('[seed]   无数据边界     : on_time_delivery（未供给）/ new_customer_count（未同步本期）');
+    console.log(
+      '[seed]   来源标注       :',
+      Object.keys(SOURCE_FIXTURES).length,
+      '条（内部/外部/人工），缺失 1 条（生产工单 → 待补清单）'
+    );
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -411,4 +494,13 @@ if (require.main === module) {
     });
 }
 
-module.exports = { seed, IDS, CONTRACT_FILE, VIEW_LINK_FIXTURES, METRIC_FIXTURES, OWNER_RESULT_FIXTURES, SEED_PERIOD };
+module.exports = {
+  seed,
+  IDS,
+  CONTRACT_FILE,
+  VIEW_LINK_FIXTURES,
+  METRIC_FIXTURES,
+  OWNER_RESULT_FIXTURES,
+  SOURCE_FIXTURES,
+  SEED_PERIOD,
+};

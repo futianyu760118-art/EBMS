@@ -222,3 +222,12 @@ h3 { font-size: 14px; }
   max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .evidence-chip.unresolved { background: var(--warn-bg); color: var(--warn-text); border-color: var(--warn-border); }
+
+/* ---------------- F4 证据来源标注（PAND-82） ---------------- */
+/* 「来源缺失」用的警示色标签，与普通类别标签区分 */
+.tag-warn { background: var(--warn-bg); color: var(--warn-text); border: 1px solid var(--warn-border); }
+.stat-value.warn { color: var(--warn-text); }
+.source-type-line { display: flex; gap: 10px; align-items: baseline; margin: 0 0 10px; }
+/* 人工录入的追加标注与场景 1 字段在视觉上连续，但用左线标出是额外一组 */
+.source-manual-grid { border-left: 3px solid var(--ok-border); padding-left: 10px; }
+.source-cutoff { margin: 0; }

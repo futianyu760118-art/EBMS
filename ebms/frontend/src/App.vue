@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { api, getToken, setToken } from './api/client';
 import ReasonEvidenceView from './views/ReasonEvidenceView.vue';
 import ResultOverviewView from './views/ResultOverviewView.vue';
+import SourceMissingView from './views/SourceMissingView.vue';
 import ViewExplorer from './views/ViewExplorer.vue';
 import { parseHash } from './view-nav';
 
@@ -110,6 +111,14 @@ const selectedReason = () => reasons.value.find((r) => r.id === selectedReasonId
           <button
             type="button"
             class="btn btn-ghost btn-sm"
+            :class="{ active: activeModule === 'sources' }"
+            @click="activeModule = 'sources'"
+          >
+            来源待补（F4）
+          </button>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
             :class="{ active: activeModule === 'views' }"
             @click="activeModule = 'views'"
           >
@@ -137,6 +146,10 @@ const selectedReason = () => reasons.value.find((r) => r.id === selectedReasonId
 
     <main v-else-if="activeModule === 'results'" class="layout-single">
       <ResultOverviewView />
+    </main>
+
+    <main v-else-if="activeModule === 'sources'" class="layout-single">
+      <SourceMissingView />
     </main>
 
     <main v-else-if="activeModule === 'views'" class="layout">

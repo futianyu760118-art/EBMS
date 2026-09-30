@@ -2,6 +2,7 @@
 
 const express = require('express');
 const evidenceRoutes = require('./http/routes/evidence-routes');
+const sourceRoutes = require('./http/routes/source-routes');
 const objectRoutes = require('./http/routes/object-routes');
 const resultRoutes = require('./http/routes/result-routes');
 const authRoutes = require('./http/routes/auth-routes');
@@ -19,7 +20,7 @@ function createApp() {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
     }
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
     if (req.method === 'OPTIONS') return res.sendStatus(204);
     return next();
@@ -28,6 +29,7 @@ function createApp() {
   app.get('/api/v1/health', (_req, res) => res.json({ ok: true, data: { status: 'up' } }));
   app.use('/api/v1', authRoutes);
   app.use('/api/v1', evidenceRoutes);
+  app.use('/api/v1', sourceRoutes);
   app.use('/api/v1', objectRoutes);
   app.use('/api/v1', resultRoutes);
 

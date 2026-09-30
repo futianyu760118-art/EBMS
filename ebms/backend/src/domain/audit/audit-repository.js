@@ -4,13 +4,15 @@ const { query } = require('../../db/pool');
 
 /**
  * 通用留痕写入。与业务写入同事务时传入 client，保证「操作生效」与「留痕」原子。
+ * 回传完整行（含 before/after）：调用方可直接把本次留痕写进响应，
+ * 不必靠「回读第一条同 action」去认领——同一实体被反复更正时会认领错。
  */
 async function record(client, { actor, actorName, action, entityType, entityId, reasonId = null, before = null, after = null }) {
   const runner = client || { query };
   const { rows } = await runner.query(
     `INSERT INTO audit_log (actor, actor_name, action, entity_type, entity_id, reason_id, before, after)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     RETURNING id, actor, actor_name, action, entity_type, entity_id, reason_id, at`,
+     RETURNING id, actor, actor_name, action, entity_type, entity_id, reason_id, before, after, at`,
     [actor, actorName, action, entityType, entityId, reasonId, before, after]
   );
   return rows[0];
