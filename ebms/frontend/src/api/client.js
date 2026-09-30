@@ -60,6 +60,12 @@ export const api = {
   ownerResults: (query = '') => request(`/owner-results${query}`),
   receiveOwnerResult: (input) => request('/owner-results', { method: 'POST', body: input, auth: true }),
 
+  // F7（PAND-85）REPORT 视图：以报告 / 结论为单位组织信息
+  reportFilters: () => request('/report-filters'),
+  reports: (query = '') => request(`/reports${query}`),
+  report: (reportId) => request(`/reports/${reportId}`),
+  createReport: (input) => request('/reports', { method: 'POST', body: input, auth: true }),
+
   // F11（PAND-89）四视图对象交叉跳转
   viewObjectTypes: () => request('/view-object-types'),
   viewObjects: (type) => request(`/objects/${type}`),
