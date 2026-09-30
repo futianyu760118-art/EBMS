@@ -60,6 +60,10 @@ export const api = {
   ownerResults: (query = '') => request(`/owner-results${query}`),
   receiveOwnerResult: (input) => request('/owner-results', { method: 'POST', body: input, auth: true }),
 
+  // F5（PAND-83）四层链路穿透：起点固定为结果指标
+  traceAnchors: (query = '') => request(`/trace/anchors${query}`),
+  traceChain: (metricId) => request(`/trace/${metricId}`),
+
   // F11（PAND-89）四视图对象交叉跳转
   viewObjectTypes: () => request('/view-object-types'),
   viewObjects: (type) => request(`/objects/${type}`),

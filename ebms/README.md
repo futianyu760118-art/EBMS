@@ -8,15 +8,16 @@ EBMS 是**跨域结论汇聚 + 经营判断 + 追溯**层，面向决策者与�
 
 ## 当前实现范围
 
-本次交付 **F1 经营结果指标集（PAND-79）**、**F3 证据关联（PAND-81）** 与 **F11 四视图交叉跳转（PAND-89）** 三个完整切片，并包含其运行所需的**最小数据底座**（工程骨架、鉴权/RBAC 中的操作人识别、Result/Reason 锚点、通用留痕）。
+本次交付 **F1 经营结果指标集（PAND-79）**、**F3 证据关联（PAND-81）**、**F11 四视图交叉跳转（PAND-89）** 与 **F5 四层链路穿透（PAND-83）** 四个完整切片，并包含其运行所需的**最小数据底座**（工程骨架、鉴权/RBAC 中的操作人识别、Result/Reason 锚点、通用留痕）。
 
 | 功能 | 状态 |
 |---|---|
 | F1 结果指标集：目标值 / 实际值 / 偏差值 + 来源与口径可追溯（PAND-79） | ✅ 已实现 |
 | F3 原因项挂载并查看支撑证据（PAND-81） | ✅ 已实现 |
+| F5 Result→Reason→Evidence→Source 四层链路可连续下钻与逐层返回（PAND-83） | ✅ 已实现 |
 | F11 REPORT/TODO/Decision/Evidence 四视图互相跳转（PAND-89） | ✅ 已实现 |
-| F2 归因穿透（PAND-80） | 锚点表 `result_reasons` + 只读清单已建，归因算法未实现 |
-| F7 REPORT 视图（PAND-85）、F8 TODO 视图（PAND-86）、F9 Decision 视图（PAND-87）、F10 Evidence 检索（PAND-88）、F4 来源标注（PAND-82）、F5 四层下钻（PAND-83）等 | 未实现（后续 issue） |
+| F2 归因穿透（PAND-80） | 锚点表 `result_reasons` + 只读清单已建，归因**登记**界面未实现（`attribution_kind` 归属判定已由 004 落地） |
+| F7 REPORT 视图（PAND-85）、F8 TODO 视图（PAND-86）、F9 Decision 视图（PAND-87）、F10 Evidence 检索（PAND-88）、F4 来源标注（PAND-82）等 | 未实现（后续 issue） |
 
 ### F1 经营结果指标集（PAND-79）说明
 
@@ -42,6 +43,30 @@ EBMS 是**跨域结论汇聚 + 经营判断 + 追溯**层，面向决策者与�
 - **跳转落点**：前端 hash 路由 `#/report/<id>`、`#/todo/<id>`、`#/decision/<id>`、`#/evidence/<id>`，可直接作为直达链接，支持浏览器前进/后退。
 - **不涵盖**：关联的新增/解除目前只有后端接口与留痕，前端未提供编辑入口（导航为本 issue 的 AC 范围）。
 
+### F5 四层链路穿透（PAND-83）说明
+
+口径以 **PAND-97 返工后的统一口径**为准：四层保留为 **M03 的视图导航段**，**不作为跨域契约层级**，不新增契约对象。
+
+- **段 ↔ 契约映射**（唯一口径在 `domain/chain/layers.js`，冻结常量；service / 路由 / 前端面包屑共用，无第二套定义）：
+
+  | 段 | 标注 | 对应 | 类型 |
+  |---|---|---|---|
+  | 1 | 结果 | `Result` 契约 | 契约对象 |
+  | 2 | **原因（归因）** | `Exception`（归因）契约 | 契约对象 |
+  | 3 | 证据 | `Evidence` 契约 | 契约对象 |
+  | 4 | 来源信息 | `Evidence.source_system` **字段** | 字段（非独立层级） |
+
+- **消费对象清点**：`contractInventory = { objects: [Result, Exception, Evidence], fields: [Evidence.source_system], extras: [] }`，随链路下发并在界面可见。**结构性保证**：004 迁移刻意**不建** `sources` / `source_records` 之类来源实体表，故「来源」在物理上不可能是第 5 个契约对象（自动化断言读 `information_schema.tables`）。
+- **场景 1（≤4 次操作）**：一次请求返回整条链路，界面导航状态机只允许进入**紧邻下一段**（`nextLayerKey` 越层返回 `null`），故结果 → 来源恒为 **3 次层间下钻**（`drillOpsToSource = 段数 − 1 = 3`，恒 ≤ 4），中途不跳出上下文。
+- **场景 2（逐层返回）**：各段**停留位置单独保存**（`positions`），返回上一层不清空、不重置；返回后停留位置与操作前一致。
+- **场景 3（固定四段）**：`LAYERS` / `TRACE_SEGMENTS` 均为冻结常量，段数 4 在结构上不可增减；数据缺段时面包屑仍渲染四段。
+- **场景 4（来源取值）**：来源段**只**取所挂载 Evidence 的 `source_system` 字段值（`resolvedFrom: 'Evidence.source_system'`），不打开新的独立来源实体（不返回 `entityId`、无实体读取入口）。
+- **边界（断点不阻断）**：任一段缺失时该段返回 `status: "MISSING"` + `breakpoint`（含 `.refill` 补录入口与落点模块），并显式 `blocked: false`；其余段照常可查看、可逐层进入。断点类型：`NO_ATTRIBUTION`（未归因）/ `NO_EVIDENCE`（无证据支撑）/ `UPSTREAM_MISSING`（上游原因段缺失）/ `SOURCE_UNMARKED`（来源未标注）。
+- **边界（来源未标注）**：Evidence 的 `source_system` 为空时来源段显示「**来源未标注**」并给出 `fallbackToRawTables: false`；补录入口落在 **F4 来源标注**，**不提供「查专业原始表」这类回落入口**，接口与界面上均无原始表记录。
+- **段 2 归因口径**：`result_reasons.attribution_kind` 是**库内生成列**（`GENERATED ALWAYS AS ... STORED`）——`reason_code` 与 `severity` 均非空 → `exception`（映射至 Exception，带 `AEOS.Exception.V1`），否则 → `m03_analysis`（显式标注「M03 自有归因分析」且 `ownedByProfessionalDomain: false`，不冒充专业维度归因）。应用层无法绕过该判定；`severity` 受 `CHECK (high|medium|low)` 约束。
+- **只读**：链路域只实现两类 `SELECT`（`listReasons` / `listEvidencesByReason`），无任何写方法与写语句；不直读 orders / materials 等专业原始表（源码静态扫描断言）。段 1 复用 F1 的 `getMetricDetail` 口径，保证「结果」这一段与指标集看到的是同一个值。
+- **不涵盖**：归因**登记**、证据**挂载**、来源**标注**的写入界面分别属 F2（PAND-80）/ F3（PAND-81）/ F4（PAND-82）；本切片只在缺段处给出指向它们的补录入口。
+
 ## 目录结构
 
 ```
@@ -58,33 +83,40 @@ ebms/
         migrations/001_init.sql   数据模型（证据 / 原因项 / 留痕）
         migrations/002_view_links.sql  四视图对象锚点 + object_links（F11）
         migrations/003_result_metrics.sql  Owner Result 收件箱 + 指标配置列（F1）
+        migrations/004_trace_chain.sql     链路四段口径：归因判定生成列 + Evidence.source_system（F5）
       domain/
         evidence/                 证据域：类型枚举 / 仓储 / 服务（校验+用例）
         results/                  F1 指标域：来源口径 / Owner Result 仓储 / 指标仓储 / 服务
+        chain/                    F5 链路域：段定义（唯一口径）/ 只读仓储 / 读取用例
         views/                    四视图对象注册表（唯一类型口径）+ 对象仓储（F11）
         links/                    交叉跳转关联：规范化配对 / 仓储 / 导航服务（F11）
         reason/                   原因项锚点（只读）
         audit/                    通用留痕仓储
       http/
-        routes/                   证据路由、四视图对象路由、指标集路由、开发登录路由
+        routes/                   证据路由、四视图对象路由、指标集路由、链路路由、开发登录路由
         middleware/               操作人识别、错误处理
       lib/token.js                HMAC-SHA256 签名 token
     test/evidence-ac.test.js      AC 逐条自动化验证（node:test）
     test/view-links-ac.test.js    F11 AC 逐条验证（可达性 / 落点 / 置灰 / 幂等 / 留痕）
     test/results-ac.test.js       F1 AC 逐条验证（口径红线 / 偏差 / 无数据 / 可追溯 / 幂等）
+    test/trace-ac.test.js         F5 AC 逐条验证（固定四段 / ≤4 次下钻 / 逐层返回 / 来源字段 / 断点 / 只读红线）
   frontend/
     src/
-      App.vue                     登录 + 模块切换（经营结果 / 原因项证据 / 四视图导航），默认落地 F1
+      App.vue                     登录 + 模块切换（经营结果 / 原因项证据 / 四层穿透 / 四视图导航），默认落地 F1
       views/ResultOverviewView.vue F1 指标集视图（取数 + 状态）
       views/ReasonEvidenceView.vue 证据列表 / 无证据支撑提示 / 留痕
+      views/TraceDrilldownView.vue F5 四层穿透视图：面包屑 + 逐层下钻/返回 + 各段内容与断点
       views/ViewExplorer.vue      F11 四视图外壳：类型切换、对象清单、hash 路由
       views/ViewObjectDetail.vue  F11 对象落地页 + 交叉跳转入口
-      components/ResultMetricTable.vue F1 指标集纯展示组件（SSR 可测）
+      components/ResultMetricTable.vue F1 指标集纯展示组件（SSR 可测，含「四层穿透」入口）
+      components/TraceBreadcrumb.vue  F5 四层面包屑（段数固定四段）
+      components/BreakpointNotice.vue  F5 断点提示 + 补录入口
       components/                 详情面板、新增弹层、关联弹层、四视图导航栏
       result-overview.js          F1 展示模型纯逻辑（无数据文案 / 偏差 / 口径版本与证据）
       view-nav.js                 F11 导航纯逻辑（置灰判定 / 落点地址 / hash 解析）
+      trace-nav.js                F5 导航状态机纯逻辑（四段 / 逐层下钻与返回 / 来源段取值 / 断点）
       api/client.js               API 客户端
-    test/                         F1 / F11 前端单测（模型 + SSR 渲染断言）
+    test/                         F1 / F5 / F11 前端单测（模型 + SSR 渲染断言）
 ```
 
 ## 数据模型（本切片）
@@ -133,6 +165,14 @@ ebms/
 | `system_record` | 系统记录 |
 | `manual_note` | 人工说明 |
 
+**F5 四层链路（PAND-83，迁移 004）**
+
+- `result_reasons` 追加 `reason_code`、`severity`（`high|medium|low`）与
+  **生成列** `attribution_kind`（`GENERATED ALWAYS AS ... STORED`：两者均非空 → `exception`，否则 `m03_analysis`）。
+  归属判定因此在**库内**完成，写入路径无法绕过。**不新增任何契约对象表**。
+- `evidences` 追加 `source_system`（可空；非空时 `CHECK` 要求去空格后非空）+ 索引。
+  第 4 段「来源信息」即消费该字段，**不建** `sources` / `source_records` 等来源实体表。
+
 ## 接口（内部 BFF，前缀 `/api/v1`）
 
 | 方法 | 路径 | 说明 |
@@ -151,6 +191,8 @@ ebms/
 | GET | `/evidences/{id}/attachments/{index}` | 附件预览（`?download=1` 为下载） |
 | POST | `/evidences` | **新增**证据（带 `reasonId` 时同时关联） |
 | GET | `/evidences?unlinkedToReason=&q=` | 关联候选清单（完整检索由 F10/PAND-88 交付） |
+| GET | `/trace/anchors?period_type=&period_value=` | **F5 链路入口清单**：可穿透的结果指标（起点固定为 Result） |
+| GET | `/trace/{metricId}` | **F5 四层链路**：一次返回四段（结果 / 原因（归因） / 证据 / 来源信息）+ 段状态与断点；指标不存在返回 404，其余段缺失为断点（200） |
 | GET | `/view-object-types` | **F11** 四视图类型枚举（REPORT/TODO/Decision/Evidence） |
 | GET | `/objects/{type}` | **F11** 某视图的对象清单（导航用，`?limit=`） |
 | GET | `/objects/{type}/{id}` | **F11** 对象落地页数据（跳转落点） |
@@ -191,16 +233,22 @@ npm run dev                # http://127.0.0.1:5199（/api 已代理到后端）
 ## 自检
 
 ```bash
-cd ebms/backend && npm test        # 53 项：F3 + F11 + F1 的 AC 场景/边界/判定标准逐条断言
-cd ebms/frontend && npm test       # 31 项：F11 导航模型 / F1 指标集模型 + SSR 渲染断言
+cd ebms/backend && npm test        # 70 项：F3 + F11 + F1 + F5 的 AC 场景/边界/判定标准逐条断言
+cd ebms/frontend && npm test       # 57 项：F5 导航状态机 / F11 导航模型 / F1 指标集模型 + SSR 渲染断言
 cd ebms/frontend && npm run build  # 前端构建
 ```
+
+> 后端 `npm test` 已固定 `--test-concurrency=1`：全部用例共用同一个测试库，而每个用例文件的
+> `before` 会 `migrate()` + `seed()`（`seed()` 会 TRUNCATE EBMS 各表）。并发跑多个文件时
+> 彼此会截断对方的夹具，导致随机失败（此为既有问题，非 F5 引入）。串行执行后结果稳定可复现。
 
 F1 夹具覆盖：12 条指标（M09 6 条 / M05 2 条 / M06 4 条）、11 条 Owner Result；其中 2 条**无数据**
 （`new_customer_count` 只供给过 2026-08 → 「来源模块未同步本期数据」；`on_time_delivery` 从未供给 →
 「来源模块未供给」），供无数据边界与「偏差一并无法计算」的断言使用。
 
 F11 夹具覆盖：6 组类型对（→ 12 个有向组合）各 1 条关联；`report`/`todo`/`decision`/`evidence` 各 1 个**无关联**对象（入口置灰边界）；1 个**部分关联** TODO（逐入口置灰）。
+
+F5 夹具覆盖：`order_delivery` 挂 3 条原因项 —— 2 条带 `reason_code` + `severity`（产能不足 / 原材料涨价 → `exception`）、1 条两者皆空（渠道压货 → `m03_analysis`）；证据来源覆盖内部专业系统（`M06`）、外部数据提供方（`SUPPLIER-A`）与**未标注**（`source_system` 为空，用于「来源未标注」边界）；另有 1 条指标（`cash_flow`）**无任何原因项**，用于「未归因」断点与「四段固定占位」断言。
 
 浏览器端 AC 走查（真实浏览器 23 项检查）见 PAND-81 评论中的验证结果。
 

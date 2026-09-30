@@ -3,16 +3,21 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { api, getToken, setToken } from './api/client';
 import ReasonEvidenceView from './views/ReasonEvidenceView.vue';
 import ResultOverviewView from './views/ResultOverviewView.vue';
+import TraceDrilldownView from './views/TraceDrilldownView.vue';
 import ViewExplorer from './views/ViewExplorer.vue';
 import { parseHash } from './view-nav';
+import { parseTraceHash } from './trace-nav';
 
 const authed = ref(Boolean(getToken()));
 const booting = ref(false);
 const error = ref('');
 
-// F1 经营结果指标集（PAND-79） / F3 原因项证据（PAND-81） / F11 四视图交叉跳转（PAND-89）
+// F1 经营结果指标集（PAND-79） / F3 原因项证据（PAND-81） / F5 四层链路穿透（PAND-83） / F11 四视图交叉跳转（PAND-89）
 // 默认落地 F1：决策者登录 EBMS 即可看到指标集，无需额外点击。
 const activeModule = ref('results');
+
+// F5：链路起点固定为结果指标，由 hash `#/trace/<metricId>` 指定
+const traceMetricId = ref('');
 
 const username = ref('owner');
 const currentUser = ref(null);
@@ -67,7 +72,14 @@ function logout() {
 
 // F1 的证据引用指向 `#/evidence/<id>`（四视图落点）：落到该 hash 时自动切到四视图，
 // 使「由 evidence_ids 可定位到对应证据」在界面上是一次真实跳转。
+// F5 的 `#/trace/<metricId>` 同形状但不带 type 段，须先于四视图识别，否则会被当成四视图落点。
 function syncFromHash() {
+  const metricId = parseTraceHash(window.location.hash);
+  if (metricId) {
+    traceMetricId.value = metricId;
+    activeModule.value = 'trace';
+    return;
+  }
   if (parseHash(window.location.hash)) activeModule.value = 'views';
 }
 
@@ -110,6 +122,15 @@ const selectedReason = () => reasons.value.find((r) => r.id === selectedReasonId
           <button
             type="button"
             class="btn btn-ghost btn-sm"
+            :class="{ active: activeModule === 'trace' }"
+            data-testid="module-trace"
+            @click="activeModule = 'trace'"
+          >
+            四层穿透（F5）
+          </button>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
             :class="{ active: activeModule === 'views' }"
             @click="activeModule = 'views'"
           >
@@ -137,6 +158,10 @@ const selectedReason = () => reasons.value.find((r) => r.id === selectedReasonId
 
     <main v-else-if="activeModule === 'results'" class="layout-single">
       <ResultOverviewView />
+    </main>
+
+    <main v-else-if="activeModule === 'trace'" class="layout-single">
+      <TraceDrilldownView :key="traceMetricId" :metric-id="traceMetricId" />
     </main>
 
     <main v-else-if="activeModule === 'views'" class="layout">

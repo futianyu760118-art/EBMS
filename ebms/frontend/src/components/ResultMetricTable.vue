@@ -54,6 +54,15 @@ defineProps({
               data-testid="metric-exceeded"
               :title="`|偏差率| 超过阈值 ${tile.thresholdPct}%`"
             >超阈值</span>
+            <!-- F5（PAND-83）链路起点：由该结果指标进入四层穿透 -->
+            <div>
+              <a
+                class="trace-entry"
+                data-testid="metric-trace-link"
+                :href="`#/trace/${tile.id}`"
+                title="从该结果指标开始：结果 → 原因（归因） → 证据 → 来源"
+              >四层穿透</a>
+            </div>
           </td>
           <td>
             <span class="tag">{{ tile.ownerModule || '未声明' }}</span>
