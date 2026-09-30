@@ -534,7 +534,12 @@ const permissions = [
     { name: '删除阿米巴', code: 'amiba:delete', module: '阿米巴经营', description: '删除阿米巴记录', created_at: now() },
     { name: '审批阿米巴', code: 'amiba:audit', module: '阿米巴经营', description: '内部定价审批、争议仲裁', created_at: now() },
     { name: '核算阿米巴', code: 'amiba:calc', module: '阿米巴经营', description: '月度核算、目标拆解、结项核算', created_at: now() },
-    { name: '导出阿米巴', code: 'amiba:export', module: '阿米巴经营', description: '导出阿米巴经营数据', created_at: now() }
+    { name: '导出阿米巴', code: 'amiba:export', module: '阿米巴经营', description: '导出阿米巴经营数据', created_at: now() },
+    // Decision 视图（M03 管理者工作面：决策背景 / 候选方案 / 所需证据 / 决策结论）
+    { name: '查看决策', code: 'decision:view', module: 'Decision视图', description: '查看决策记录、背景、候选方案、所需证据与结论', created_at: now() },
+    { name: '创建决策', code: 'decision:create', module: 'Decision视图', description: '创建决策记录（初始为待决策）', created_at: now() },
+    { name: '编辑决策', code: 'decision:edit', module: 'Decision视图', description: '形成/修改决策结论、关联或派发执行事项', created_at: now() },
+    { name: '删除决策', code: 'decision:delete', module: 'Decision视图', description: '删除决策记录', created_at: now() }
   ];
   // 增量补充缺失的权限（保留已存在的权限和已分配的角色权限）
   let permsAdded = 0;
@@ -954,6 +959,35 @@ Object.keys(amibaRolePerms).forEach(roleCode => {
   });
 });
 if (amibaPermsAdded > 0) logger.info('阿米巴经营管理角色权限补充完成，新增 ' + amibaPermsAdded + ' 条');
+
+// ===== Decision 视图（M03 管理者工作面）：角色权限补充（增量，不覆盖用户已配置项）=====
+// 决策者是管理责任人视角：管理岗（销售/项目/研发/财务）可见并管理，执行岗只读查看。
+const decisionRolePerms = {
+  admin: ['decision:view', 'decision:create', 'decision:edit', 'decision:delete'],
+  sales_manager: ['decision:view', 'decision:create', 'decision:edit', 'decision:delete'],
+  project_manager: ['decision:view', 'decision:create', 'decision:edit', 'decision:delete'],
+  finance: ['decision:view', 'decision:create', 'decision:edit', 'decision:delete'],
+  rd_manager: ['decision:view', 'decision:create', 'decision:edit'],
+  engineer: ['decision:view'],
+  purchase: ['decision:view'],
+  sales: ['decision:view'],
+  viewer: ['decision:view']
+};
+let decisionPermsAdded = 0;
+Object.keys(decisionRolePerms).forEach(roleCode => {
+  const role = roleTable.all().find(r => r.code === roleCode);
+  if (!role) return;
+  decisionRolePerms[roleCode].forEach(code => {
+    const perm = permTable.all().find(p => p.code === code);
+    if (!perm) return;
+    const exists = rpTable.all().some(rp => rp.role_id === role.id && rp.permission_id === perm.id);
+    if (!exists) {
+      rpTable.insert({ role_id: role.id, permission_id: perm.id, granted_at: now() });
+      decisionPermsAdded++;
+    }
+  });
+});
+if (decisionPermsAdded > 0) logger.info('Decision 视图角色权限补充完成，新增 ' + decisionPermsAdded + ' 条');
 
 // ===== 阿米巴经营管理：示例数据初始化 =====
 const _amibaOrgTable = getTable('amiba_org');

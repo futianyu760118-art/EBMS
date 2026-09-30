@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+  <script src="icons.js"></script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>EBMS企业经营管理系统 - Decision 视图</title><link rel="stylesheet" href="common.css">
+<style>
+.sb{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.sb input,.sb select{padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px}
+.panel{background:#fff;border-radius:8px;padding:14px;box-shadow:0 2px 6px rgba(0,0,0,.06);margin-bottom:14px}
+.panel h3{margin:0 0 10px;font-size:14px;color:#444}
+table{width:100%;border-collapse:collapse;font-size:13px;background:#fff}
+th{background:#f5f6fa;padding:9px 8px;text-align:left;font-weight:600;color:#555;border-bottom:2px solid #eee;white-space:nowrap;position:sticky;top:0;z-index:10}
+td{padding:7px 8px;border-bottom:1px solid #f0f0f0;vertical-align:top}
+tr:hover td{background:#f8f9ff}
+.tbl-wrap{overflow-x:auto;max-height:64vh;overflow-y:auto}
+.btn{padding:7px 14px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;white-space:nowrap}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.b1{background:#667eea;color:#fff}.b2{background:#27ae60;color:#fff}.b3{background:#e74c3c;color:#fff}.b4{background:#f39c12;color:#fff}
+.bs{padding:3px 8px;font-size:11px}
+.pg{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:13px;color:#666;flex-wrap:wrap;gap:8px}
+.em{text-align:center;color:#999;padding:30px}
+.empty-box{text-align:center;color:#888;padding:34px 16px}
+.empty-box .t{font-size:15px;font-weight:600;color:#666;margin-bottom:6px}
+.empty-box .s{font-size:12px;color:#999;line-height:1.9}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:rgba(0,0,0,.06);color:#555}
+.s-pending{background:#fff3e0;color:#a9631a}.s-decided{background:#e6f7ed;color:#1c7c46}
+.s-overdue{background:#fdecea;color:#c0392b}.s-done{background:#e6f7ed;color:#1c7c46}
+.s-doing{background:#e8f0fe;color:#1a56b8}.s-todo{background:#f1f1f5;color:#666}
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.sc{background:#fff;padding:12px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.06);text-align:center}
+.sc .n{font-size:22px;font-weight:700;color:#667eea}.sc .l{font-size:11px;color:#999;margin-top:2px}
+.mo{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:1000;justify-content:center;align-items:flex-start;padding-top:20px;overflow:auto}.mo.ac{display:flex}
+.mb{background:#fff;border-radius:12px;padding:20px;width:780px;max-width:95%;max-height:90vh;overflow:auto}
+.fg{margin-bottom:8px}.fg label{display:block;font-size:12px;color:#666;margin-bottom:3px}
+.fg input,.fg select,.fg textarea{width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:4px;font-size:13px}
+.fg textarea{resize:vertical;min-height:46px}
+.gr{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.dl{font-size:13px;line-height:2}.dl b{display:inline-block;min-width:92px;color:#666;font-weight:500}
+.chip{display:inline-block;padding:1px 7px;border-radius:9px;background:#f0f3ff;color:#4356b8;font-size:11px;margin:0 3px 3px 0}
+.sub{border:1px solid #eee;border-radius:6px;padding:8px;margin-bottom:8px;background:#fafbff}
+.sub .h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.tbl-in{width:100%;border-collapse:collapse;font-size:12px}
+.tbl-in th{position:static;background:#f5f6fa;padding:6px;font-size:12px}
+.tbl-in td{padding:6px}
+.note{font-size:12px;color:#999;line-height:1.8;margin-top:6px}
+.danger{color:#c0392b;font-size:12px}
+</style></head><body data-page-title="Decision 视图" data-page-perm="decision:view">
+<div class="sidebar" id="sidebar"></div>
+<div class="main-content" data-module="decision">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+<h2>Decision 视图</h2>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<button class="btn b1" onclick="openAdd()" data-perm="decision:create">新建决策</button>
+</div>
+</div>
+
+<div class="sg" id="statCards"></div>
+
+<div class="panel">
+<h3>检索条件</h3>
+<div class="sb">
+<label style="font-size:12px;color:#666">状态</label>
+<select id="f_status">
+<option value="">全部状态</option>
+<option value="pending">待决策</option>
+<option value="decided">已决策</option>
+</select>
+<label style="font-size:12px;color:#666">决策人</label>
+<select id="f_decided_by"><option value="">全部决策人</option></select>
+<label style="font-size:12px;color:#666">创建时间</label>
+<input type="date" id="f_created_from" title="创建时间起">
+<input type="date" id="f_created_to" title="创建时间止">
+<label style="font-size:12px;color:#666">决策时间</label>
+<input type="date" id="f_decided_from" title="决策时间起">
+<input type="date" id="f_decided_to" title="决策时间止">
+<input type="text" id="f_kw" placeholder="标题/编码/结论/背景" style="width:200px">
+<button class="btn b1" onclick="loadList(1)">查询</button>
+<button class="btn bs" style="background:#eee;color:#555" onclick="resetFilter()">重置</button>
+</div>
+</div>
+
+<div class="tbl-wrap">
+<table id="tbl">
+<thead><tr>
+<th>决策编码</th><th>标题</th><th>背景（结果/原因）</th><th>候选方案</th><th>所需证据</th>
+<th>状态</th><th>决策结论</th><th>决策人</th><th>决策时间</th><th>变更记录</th><th>执行项</th><th>操作</th>
+</tr></thead>
+<tbody id="tb"></tbody>
+</table>
+</div>
+<div class="pg" id="pg"></div>
+</div><!-- /main-content -->
+
+<!-- ===== 新建决策弹窗 ===== -->
+<div class="mo" id="formModal">
+<div class="mb">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+<h3 style="margin:0">新建决策</h3>
+<span onclick="closeForm()" style="cursor:pointer;font-size:24px;color:#999">&times;</span>
+</div>
+<form id="decisionForm" onsubmit="saveForm();return false">
+<div class="gr">
+<div class="fg"><label>决策编码</label><input id="f_code" placeholder="留空自动生成（DEC年月-流水号）"></div>
+<div class="fg"><label>决策标题 <span style="color:#e74c3c">*</span></label><input id="f_title" required></div>
+</div>
+<div class="fg"><label>决策摘要</label><textarea id="f_summary" placeholder="一句话说明本次决策要解决的问题"></textarea></div>
+
+<div class="sub">
+<div class="h"><b style="font-size:13px">背景（关联结果 / 原因）<span style="color:#e74c3c"> *</span></b>
+<button type="button" class="btn bs b1" onclick="addBgRow()">+ 增加关联</button></div>
+<div id="bgRows"></div>
+<div class="note" id="bgNote"></div>
+</div>
+
+<div class="sub">
+<div class="h"><b style="font-size:13px">候选方案（至少 1 条）<span style="color:#e74c3c"> *</span></b>
+<button type="button" class="btn bs b1" onclick="addOptRow()">+ 增加方案</button></div>
+<div id="optRows"></div>
+</div>
+
+<div class="sub">
+<div class="h"><b style="font-size:13px">所需 Evidence</b></div>
+<div class="fg"><label>证据编码（逗号分隔，可留空表示本决策无需外部证据）</label><input id="f_required_evidence" placeholder="如 EVD202609-0001, EVD202609-0002"></div>
+<datalist id="evList"></datalist>
+</div>
+
+<div style="text-align:right;margin-top:10px">
+<button type="button" class="btn bs" style="background:#eee;color:#555" onclick="closeForm()">取消</button>
+<button type="submit" class="btn b2">创建（初始为待决策）</button>
+</div>
+</form>
+</div>
+</div>
+
+<!-- ===== 详情弹窗 ===== -->
+<div class="mo" id="detailModal">
+<div class="mb">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+<h3 style="margin:0">决策详情</h3>
+<span onclick="document.getElementById('detailModal').classList.remove('ac')" style="cursor:pointer;font-size:24px;color:#999">&times;</span>
+</div>
+<div id="detailBox" class="dl"></div>
+</div>
+</div>
+
+<!-- ===== 结论弹窗 ===== -->
+<div class="mo" id="conclModal">
+<div class="mb" style="width:620px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+<h3 style="margin:0" id="conclTitle">形成决策结论</h3>
+<span onclick="document.getElementById('conclModal').classList.remove('ac')" style="cursor:pointer;font-size:24px;color:#999">&times;</span>
+</div>
+<div id="conclHint" class="note"></div>
+<div class="fg"><label>决策结论 <span style="color:#e74c3c">*</span></label><textarea id="c_conclusion" style="min-height:90px"></textarea></div>
+<div class="gr">
+<div class="fg"><label>决策人</label><input id="c_decided_by" placeholder="默认记录为当前登录用户"></div>
+<div class="fg"><label>决策时间</label><input id="c_decided_at" placeholder="留空取当前时间"></div>
+</div>
+<div class="fg" id="reasonWrap"><label>变更理由 <span class="danger" id="reasonStar" style="display:none">*（修改已形成的结论必填）</span></label><textarea id="c_reason"></textarea></div>
+<div style="text-align:right;margin-top:10px">
+<button type="button" class="btn bs" style="background:#eee;color:#555" onclick="document.getElementById('conclModal').classList.remove('ac')">取消</button>
+<button type="button" class="btn b2" id="conclSubmit" onclick="saveConclusion()">保存结论</button>
+</div>
+</div>
+</div>
+
+<!-- ===== 关联执行项弹窗 ===== -->
+<div class="mo" id="execModal">
+<div class="mb" style="width:700px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+<h3 style="margin:0">关联执行事项（TODO）</h3>
+<span onclick="document.getElementById('execModal').classList.remove('ac')" style="cursor:pointer;font-size:24px;color:#999">&times;</span>
+</div>
+<div class="sub">
+<div class="h"><b style="font-size:13px">关联已有执行项</b></div>
+<div class="sb" style="margin-bottom:6px">
+<input type="text" id="tc_kw" placeholder="按标题/编码/责任人筛选" style="width:220px">
+<button type="button" class="btn bs b1" onclick="loadTodoCandidates()">查询候选</button>
+</div>
+<div id="tcBox" class="note">尚未载入候选。</div>
+</div>
+<div class="sub">
+<div class="h"><b style="font-size:13px">或由本决策派发新执行项</b></div>
+<div class="gr">
+<div class="fg"><label>执行项标题 <span style="color:#e74c3c">*</span></label><input id="nt_title"></div>
+<div class="fg"><label>责任人</label><input id="nt_assignee"></div>
+</div>
+<div class="gr">
+<div class="fg"><label>截止时间</label><input type="date" id="nt_due"></div>
+<div class="fg"><label>优先级</label><select id="nt_priority"><option value="normal">普通</option><option value="high">高</option><option value="low">低</option></select></div>
+</div>
+<div class="fg"><label>说明</label><textarea id="nt_detail"></textarea></div>
+<div style="text-align:right"><button type="button" class="btn b2" onclick="dispatchTodo()">派发并关联</button></div>
+</div>
+</div>
+</div>
+
+<script src="common.js"></script>
+<script src="fetch-auth.js"></script>
+<script>
+const API='/api/decisions';
+const DEFAULT_PAGE_SIZE=20;
+const STATUS_LABEL={pending:'待决策',decided:'已决策'};
+const REF_TYPE_LABEL={result:'结果',reason:'原因'};
+let curPage=1, total=0, LIMIT=DEFAULT_PAGE_SIZE, meta={}, curDetail=null;
+
+// 单页条数可配置：默认 20 条，选择结果本地记住
+try{const saved=parseInt(localStorage.getItem('decision_page_size'),10);if([10,20,50,100,200].indexOf(saved)>=0)LIMIT=saved}catch(e){}
+
+function esc(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function toast(m){let d=document.createElement('div');d.textContent=m;d.style.cssText='position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 20px;border-radius:6px;z-index:9999;font-size:13px';document.body.appendChild(d);setTimeout(()=>d.remove(),2200)}
+
+// 检索条件 → 查询串（空值不下发，保证各维度单独及组合均生效可判定）
+function qs(){
+  const p=new URLSearchParams();
+  const map={f_status:'status',f_decided_by:'decided_by',f_created_from:'created_from',f_created_to:'created_to',
+             f_decided_from:'decided_from',f_decided_to:'decided_to',f_kw:'keyword'};
+  Object.keys(map).forEach(id=>{const el=document.getElementById(id);if(el&&el.value)p.set(map[id],el.value)});
+  return p;
+}
+
+// ===== 候选与筛选项 =====
+async function loadMeta(){
+  try{
+    const r=await fetch(API+'/refs');
+    if(r.status===401||r.status===403){document.getElementById('tb').innerHTML='<tr><td colspan="12" class="em">无权限查看决策</td></tr>';return}
+    meta=await r.json();
+    fillSel('f_decided_by',[]);
+    document.getElementById('evList').innerHTML=(meta.evidence_codes||[]).map(c=>'<option value="'+esc(c)+'">').join('');
+    const up=meta.upstream||{};
+    document.getElementById('bgNote').textContent=
+      '结果候选来源：'+up.result_source+'（'+(up.result_source_ready?'已接入':'未接入')+'）；原因候选来源：'+up.reason_source+'（'+(up.reason_source_ready?'已接入':'未接入')+'）。上游未接入时可直接填写编码与名称。';
+  }catch(e){console.error(e)}
+}
+function fillSel(id,arr){const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;const first=sel.options[0]?sel.options[0].outerHTML:'';sel.innerHTML=first+(arr||[]).map(v=>'<option>'+esc(v)+'</option>').join('');sel.value=cur}
+
+// ===== 汇总（待决策不计入已决策数量）=====
+async function loadStats(){
+  try{
+    const r=await fetch(API+'/stats?'+qs().toString());const d=await r.json();
+    const cards=[
+      {n:d.total,l:'匹配决策数',c:'#667eea'},
+      {n:d.decided,l:'已决策',c:'#1c7c46'},
+      {n:d.pending,l:'待决策',c:'#a9631a'}
+    ];
+    document.getElementById('statCards').innerHTML=cards.map(c=>'<div class="sc"><div class="n" style="color:'+c.c+'">'+esc(c.n)+'</div><div class="l">'+c.l+'</div></div>').join('');
+    // 决策人下拉按现有数据取值
+    try{
+      const r2=await fetch(API+'?limit=200');const d2=await r2.json();
+      const names=[...new Set((d2.data||[]).map(x=>x.decided_by).filter(Boolean))].sort();
+      fillSel('f_decided_by',names);
+    }catch(e){}
+  }catch(e){}
+}
+
+// ===== 列表 =====
+async function loadList(p){
+  if(p)curPage=p;
+  const tb=document.getElementById('tb');
+  try{
+    const r=await fetch(API+'?'+qs().toString()+'&page='+curPage+'&limit='+LIMIT);
+    if(r.status===401||r.status===403){tb.innerHTML='<tr><td colspan="12" class="em">无权限查看决策</td></tr>';renderPg();return}
+    const d=await r.json();total=d.total;
+    if(!d.data||!d.data.length){
+      // 边界：无匹配时显示空态，检索条件保留在筛选区（不重置）
+      tb.innerHTML='<tr><td colspan="12"><div class="empty-box">'+
+        '<div class="t">没有匹配的决策</div>'+
+        '<div class="s">当前检索条件未命中任何决策记录，条件已保留在筛选区。<br>可放宽「状态 / 决策人 / 时间范围」后重新查询，或点击「新建决策」创建一条。</div>'+
+        '</div></td></tr>';
+    }else{
+      tb.innerHTML=d.data.map(rowHtml).join('');
+    }
+    renderPg();
+    if(window.PermissionCheck)PermissionCheck.applyToPage();
+  }catch(e){tb.innerHTML='<tr><td colspan="12" class="em">加载失败: '+esc(e.message)+'</td></tr>';renderPg()}
+}
+function statusBadge(s){return '<span class="badge '+(s==='decided'?'s-decided':'s-pending')+'">'+esc(STATUS_LABEL[s]||s||'待决策')+'</span>'}
+function bgText(refs){
+  const list=(refs||[]).filter(Boolean);
+  if(!list.length)return '<span style="color:#bbb">未关联</span>';
+  return list.map(r=>'<span class="chip">'+esc(REF_TYPE_LABEL[r.type]||r.type)+' '+esc(r.code)+'</span>').join('');
+}
+function rowHtml(r){
+  return '<tr>'+
+    '<td>'+esc(r.decision_code)+'</td>'+
+    '<td>'+esc(r.title)+'</td>'+
+    '<td>'+bgText(r.background)+'</td>'+
+    '<td>'+esc(r.option_count)+' 条'+(r.adopted_option?'<br><span class="chip">采纳 '+esc(r.adopted_option)+'</span>':'')+'</td>'+
+    '<td>'+esc(r.required_evidence_count)+' 项</td>'+
+    '<td>'+statusBadge(r.status)+'</td>'+
+    '<td>'+esc(r.conclusion||'-')+'</td>'+
+    '<td>'+esc(r.decided_by||'-')+'</td>'+
+    '<td>'+esc(r.decided_at||'-')+'</td>'+
+    '<td>'+esc(r.conclusion_change_count)+'</td>'+
+    '<td>'+esc(r.execution_count)+(r.execution_count?'（完成 '+esc(r.execution_completion_rate)+'%）':'')+'</td>'+
+    '<td><button class="btn bs b1" onclick="openDetail('+r.id+')">查看</button> '+
+    '<button class="btn bs b4" onclick="openConclusion('+r.id+')" data-perm="decision:edit">'+(r.status==='decided'?'改结论':'定结论')+'</button> '+
+    '<button class="btn bs b2" onclick="openExec('+r.id+')" data-perm="decision:edit">执行项</button> '+
+    '<button class="btn bs b3" onclick="del('+r.id+')" data-perm="decision:delete">删</button></td>'+
+    '</tr>';
+}
+function renderPg(){
+  const pages=Math.max(1,Math.ceil(total/LIMIT));
+  const opts=(meta.page_size_options||[10,20,50,100,200]).map(n=>'<option value="'+n+'"'+(n===LIMIT?' selected':'')+'>'+n+' 条/页</option>').join('');
+  document.getElementById('pg').innerHTML=
+    '<span>共 '+total+' 条，第 '+curPage+'/'+pages+' 页</span>'+
+    '<div style="display:flex;gap:6px;align-items:center">'+
+    (curPage>1?'<button class="btn bs" style="background:#eee" onclick="loadList('+(curPage-1)+')">上一页</button>':'')+
+    (curPage<pages?'<button class="btn bs" style="background:#eee" onclick="loadList('+(curPage+1)+')">下一页</button>':'')+
+    '<select id="pageSizeSel" title="每页显示条数" style="padding:5px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px">'+opts+'</select>'+
+    '</div>';
+  const sel=document.getElementById('pageSizeSel');
+  if(sel)sel.addEventListener('change',function(){
+    LIMIT=parseInt(this.value,10);
+    try{localStorage.setItem('decision_page_size',String(LIMIT))}catch(e){}
+    loadList(1);loadStats();
+  });
+}
+function resetFilter(){['f_status','f_decided_by','f_created_from','f_created_to','f_decided_from','f_decided_to','f_kw'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});loadList(1);loadStats()}
+
+// ===== 详情 =====
+async function openDetail(id){
+  try{
+    const r=await fetch(API+'/'+id);const d=await r.json();
+    if(!r.ok){toast(d.error||'加载失败');return}
+    curDetail=d;
+    const row=(k,v)=>'<div><b>'+k+'</b>'+esc(v===''||v==null?'-':v)+'</div>';
+    let html='';
+    html+=row('决策编码',d.decision_code)+row('标题',d.title)+row('决策摘要',d.summary);
+    html+='<div><b>状态</b>'+statusBadge(d.status)+'</div>';
+    html+='<div><b>背景</b>'+(d.background||[]).map(x=>'<span class="chip">'+esc(x.type_label||x.type)+' '+esc(x.code)+(x.label?'（'+esc(x.label)+'）':'')+'</span>').join('')+'</div>';
+    html+='<div class="note">'+esc(d.background_note||'')+'</div>';
+    html+='<div style="margin-top:6px"><b>候选方案</b></div><table class="tbl-in"><thead><tr><th>方案</th><th>说明</th><th>优点</th><th>缺点</th><th>采纳</th></tr></thead><tbody>'+
+      (d.options||[]).map(o=>'<tr><td>'+esc(o.name)+'</td><td>'+esc(o.description||'-')+'</td><td>'+esc(o.pros||'-')+'</td><td>'+esc(o.cons||'-')+'</td><td>'+(o.selected?'<span class="badge s-decided">采纳</span>':'-')+'</td></tr>').join('')+'</tbody></table>';
+    html+='<div style="margin-top:6px"><b>所需 Evidence</b>'+((d.required_evidence||[]).length? (d.required_evidence||[]).map(e=>'<span class="chip">'+esc(e.evidence_code)+(e.provided?' ✓':'')+'</span>').join('') : '<span style="color:#999">未要求外部证据</span>')+'</div>';
+    html+='<div class="note">'+esc(d.required_evidence_note||'')+'</div>';
+    html+=row('决策结论',d.conclusion)+row('决策人',d.decided_by)+row('决策时间',d.decided_at);
+    html+=row('结论变更次数',d.conclusion_change_count);
+
+    html+='<div style="margin-top:8px"><b>变更留痕（含变更人 / 时间 / 变更前后值）</b></div>';
+    if(!(d.changes||[]).length){ html+='<div class="note">暂无变更记录。</div>'; }
+    else{
+      html+='<table class="tbl-in"><thead><tr><th>#</th><th>类型</th><th>变更前</th><th>变更后</th><th>理由</th><th>变更人</th><th>时间</th></tr></thead><tbody>'+
+        d.changes.map(c=>'<tr><td>'+esc(c.seq)+'</td><td>'+esc(changeTypeLabel(c.change_type))+'</td><td>'+esc(c.before_value||'-')+'</td><td>'+esc(c.after_value||'-')+'</td><td>'+esc(c.reason||'-')+'</td><td>'+esc(c.changed_by||'-')+'</td><td>'+esc(c.changed_at||'-')+'</td></tr>').join('')+
+        '</tbody></table>';
+    }
+
+    const s=(d.execution||{}).summary||{};
+    html+='<div style="margin-top:8px"><b>执行情况（关联 TODO）</b> 共 '+esc(s.total||0)+' 项 / 已完成 '+esc(s.done||0)+' / 进行中 '+esc(s.doing||0)+' / 待办 '+esc(s.todo||0)+' / 逾期 '+esc(s.overdue||0)+'，完成度 '+esc(s.completion_rate||0)+'%</div>';
+    if(!((d.execution||{}).todos||[]).length){ html+='<div class="note">尚未关联执行项。</div>'; }
+    else{
+      html+='<table class="tbl-in"><thead><tr><th>执行项</th><th>责任人</th><th>截止</th><th>状态</th><th>操作</th></tr></thead><tbody>'+
+        d.execution.todos.map(t=>'<tr><td>'+esc(t.action_code)+' '+esc(t.title)+'</td><td>'+esc(t.assignee_name||'-')+'</td><td>'+esc(t.due_at||'-')+'</td>'+
+          '<td><span class="badge '+execCls(t.exec_status)+'">'+esc(t.exec_label)+'</span></td>'+
+          '<td><button class="btn bs b3" data-perm="decision:edit" onclick="unlinkTodo('+esc(t.id)+')">解除关联</button></td></tr>').join('')+
+        '</tbody></table>';
+    }
+    html+='<div class="note">'+esc((d.execution||{}).note||'')+'</div>';
+    html+=row('创建时间',d.created_at)+row('更新时间',d.updated_at)+row('契约版本',d.contract_version);
+
+    document.getElementById('detailBox').innerHTML=html;
+    document.getElementById('detailModal').classList.add('ac');
+    if(window.PermissionCheck)PermissionCheck.applyToPage();
+  }catch(e){toast('加载失败: '+e.message)}
+}
+function changeTypeLabel(t){return {conclusion:'结论变更',todo_linked:'关联执行项',todo_dispatched:'派发执行项',todo_unlinked:'解除关联'}[t]||t}
+function execCls(s){return {'done':'s-done','doing':'s-doing','todo':'s-todo','overdue':'s-overdue','cancelled':'s-todo'}[s]||'s-todo'}
+
+// ===== 新建决策 =====
+function bgRowHtml(){
+  const opts=(meta.background_ref_types||[{value:'result',label:'结果'},{value:'reason',label:'原因'}])
+    .map(t=>'<option value="'+esc(t.value)+'">'+esc(t.label)+'</option>').join('');
+  const d=document.createElement('div');d.className='gr bgRow';d.style.marginBottom='6px';
+  d.innerHTML='<div style="display:grid;grid-template-columns:110px 1fr 1fr 34px;gap:6px;width:100%">'+
+    '<select class="bgType">'+opts+'</select>'+
+    '<input class="bgCode" placeholder="编码，如 gross_margin / MATERIAL_COST">'+
+    '<input class="bgLabel" placeholder="名称（可选）">'+
+    '<button type="button" class="btn bs b3" onclick="this.parentNode.parentNode.remove()">×</button></div>';
+  return d;
+}
+function addBgRow(){document.getElementById('bgRows').appendChild(bgRowHtml())}
+function optRowHtml(){
+  const d=document.createElement('div');d.className='sub optRow';
+  d.innerHTML='<div class="h"><input class="optName" placeholder="方案名称（必填）" style="flex:1;padding:6px 8px;border:1px solid #ddd;border-radius:4px;font-size:13px">'+
+    '<label style="font-size:12px;color:#666;margin-left:8px;white-space:nowrap"><input type="checkbox" class="optSel"> 采纳</label>'+
+    '<button type="button" class="btn bs b3" style="margin-left:8px" onclick="this.parentNode.parentNode.remove()">×</button></div>'+
+    '<div class="gr"><div class="fg"><label>说明</label><input class="optDesc"></div><div class="fg"><label>优点</label><input class="optPros"></div></div>'+
+    '<div class="fg"><label>缺点</label><input class="optCons"></div>';
+  return d;
+}
+function addOptRow(){document.getElementById('optRows').appendChild(optRowHtml())}
+function openAdd(){
+  document.getElementById('decisionForm').reset();
+  document.getElementById('bgRows').innerHTML='';
+  document.getElementById('optRows').innerHTML='';
+  addBgRow();addOptRow();
+  document.getElementById('formModal').classList.add('ac');
+}
+function closeForm(){document.getElementById('formModal').classList.remove('ac')}
+async function saveForm(){
+  const bg=[...document.querySelectorAll('#bgRows .bgRow')].map(r=>({
+    type:r.querySelector('.bgType').value,
+    code:r.querySelector('.bgCode').value.trim(),
+    label:r.querySelector('.bgLabel').value.trim()
+  })).filter(r=>r.code);
+  const options=[...document.querySelectorAll('#optRows .optRow')].map(r=>({
+    name:r.querySelector('.optName').value.trim(),
+    description:r.querySelector('.optDesc').value.trim(),
+    pros:r.querySelector('.optPros').value.trim(),
+    cons:r.querySelector('.optCons').value.trim(),
+    selected:r.querySelector('.optSel').checked
+  })).filter(o=>o.name);
+  const body={
+    decision_code:document.getElementById('f_code').value.trim(),
+    title:document.getElementById('f_title').value.trim(),
+    summary:document.getElementById('f_summary').value.trim(),
+    background:bg,
+    options:options,
+    required_evidence:document.getElementById('f_required_evidence').value
+  };
+  try{
+    const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok){toast(d.error||'创建失败');return}
+    toast('决策已创建（待决策）');closeForm();loadMeta();loadList(1);loadStats();
+  }catch(e){toast('创建失败: '+e.message)}
+}
+async function del(id){
+  if(!confirm('确认删除该决策？其变更留痕一并删除，关联的执行项仅解除关联。'))return;
+  try{
+    const r=await fetch(API+'/'+id,{method:'DELETE'});const d=await r.json();
+    if(!r.ok){toast(d.error||'删除失败');return}
+    toast('已删除');loadList(curPage);loadStats();
+  }catch(e){toast(e.message)}
+}
+
+// ===== 结论（场景 2：不可静默修改）=====
+let conclTarget=null;
+async function openConclusion(id){
+  try{
+    const r=await fetch(API+'/'+id);const d=await r.json();
+    if(!r.ok){toast(d.error||'加载失败');return}
+    conclTarget=d;
+    const decided=d.status==='decided';
+    document.getElementById('conclTitle').textContent=decided?'修改决策结论':'形成决策结论';
+    document.getElementById('conclHint').textContent=decided
+      ? '本决策已形成结论（决策人 '+d.decided_by+'，'+d.decided_at+'）。修改必须填写变更理由，变更前后值、变更人与时间将写入留痕。'
+      : '形成结论后状态将由「待决策」转为「已决策」，并记录决策人与决策时间。';
+    document.getElementById('reasonStar').style.display=decided?'inline':'none';
+    document.getElementById('c_conclusion').value=decided?d.conclusion:'';
+    document.getElementById('c_decided_by').value='';
+    document.getElementById('c_decided_at').value='';
+    document.getElementById('c_reason').value='';
+    const c=document.getElementById('c_conclusion'),rs=document.getElementById('c_reason'),by=document.getElementById('c_decided_by');
+    c.oninput=rs.oninput=by.oninput=syncConclSubmit;
+    syncConclSubmit();
+    document.getElementById('conclModal').classList.add('ac');
+  }catch(e){toast('加载失败: '+e.message)}
+}
+// 修改已形成结论时未填理由 → 保存按钮禁用（前端拦截静默修改）
+function conclNeedsReason(){return !!(conclTarget&&conclTarget.status==='decided')}
+function syncConclSubmit(){
+  const btn=document.getElementById('conclSubmit');
+  const conclusion=document.getElementById('c_conclusion').value.trim();
+  const reason=document.getElementById('c_reason').value.trim();
+  const unchanged=conclNeedsReason()&&conclusion===String(conclTarget.conclusion||'').trim();
+  btn.disabled=!conclusion||(conclNeedsReason()&&!reason)||unchanged;
+  btn.textContent=unchanged?'结论未变化':(conclNeedsReason()?'保存修改':'形成结论');
+}
+async function saveConclusion(){
+  if(!conclTarget)return;
+  const conclusion=document.getElementById('c_conclusion').value.trim();
+  if(!conclusion){toast('决策结论必填');return}
+  if(conclNeedsReason()&&conclusion===String(conclTarget.conclusion||'').trim()){toast('新结论与当前结论相同，未产生变更');return}
+  if(conclNeedsReason()&&!document.getElementById('c_reason').value.trim()){toast('修改已形成的结论必须填写变更理由');return}
+  const body={
+    conclusion:conclusion,
+    reason:document.getElementById('c_reason').value.trim(),
+    decided_by:document.getElementById('c_decided_by').value.trim(),
+    decided_at:document.getElementById('c_decided_at').value.trim()
+  };
+  try{
+    const r=await fetch(API+'/'+conclTarget.id+'/conclusion',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok){toast(d.error||'保存失败');return}
+    toast(conclNeedsReason()?'结论已修改并留痕':'结论已记录');
+    document.getElementById('conclModal').classList.remove('ac');
+    loadList(curPage);loadStats();
+  }catch(e){toast('保存失败: '+e.message)}
+}
+
+// ===== 执行项（场景 3）=====
+let execTarget=null;
+function openExec(id){execTarget=id;document.getElementById('tcBox').textContent='尚未载入候选。';loadTodoCandidates();document.getElementById('execModal').classList.add('ac')}
+async function loadTodoCandidates(){
+  try{
+    const kw=document.getElementById('tc_kw').value.trim();
+    const r=await fetch(API+'/todo-candidates?unlinked=1'+(kw?'&keyword='+encodeURIComponent(kw):''));
+    const d=await r.json();
+    if(!(d.data||[]).length){document.getElementById('tcBox').innerHTML='没有可关联的未关联执行项；可在下方直接派发新执行项。';return}
+    document.getElementById('tcBox').innerHTML='<table class="tbl-in"><thead><tr><th>编码</th><th>标题</th><th>责任人</th><th>截止</th><th>状态</th><th></th></tr></thead><tbody>'+
+      d.data.map(t=>'<tr><td>'+esc(t.action_code)+'</td><td>'+esc(t.title)+'</td><td>'+esc(t.assignee_name||'-')+'</td><td>'+esc(t.due_at||'-')+'</td>'+
+        '<td><span class="badge '+execCls(t.exec_status)+'">'+esc(t.exec_label)+'</span></td>'+
+        '<td><button class="btn bs b1" onclick="linkTodo('+esc(t.id)+')">关联</button></td></tr>').join('')+'</tbody></table>';
+  }catch(e){document.getElementById('tcBox').textContent='候选加载失败: '+e.message}
+}
+async function linkTodo(todoId){
+  if(!execTarget)return;
+  try{
+    const r=await fetch(API+'/'+execTarget+'/execution-todos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({todo_id:todoId})});
+    const d=await r.json();
+    if(!r.ok){toast(d.error||'关联失败');return}
+    toast('执行项已关联');loadTodoCandidates();loadList(curPage);
+  }catch(e){toast('关联失败: '+e.message)}
+}
+async function dispatchTodo(){
+  if(!execTarget)return;
+  const title=document.getElementById('nt_title').value.trim();
+  if(!title){toast('请填写执行项标题');return}
+  const body={title:title,assignee_name:document.getElementById('nt_assignee').value.trim(),
+    due_at:document.getElementById('nt_due').value,
+    priority:document.getElementById('nt_priority').value,detail:document.getElementById('nt_detail').value.trim()};
+  try{
+    const r=await fetch(API+'/'+execTarget+'/execution-todos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok){toast(d.error||'派发失败');return}
+    toast('执行项已派发并关联');
+    document.getElementById('nt_title').value='';document.getElementById('nt_assignee').value='';
+    document.getElementById('nt_due').value='';document.getElementById('nt_detail').value='';
+    loadTodoCandidates();loadList(curPage);
+  }catch(e){toast('派发失败: '+e.message)}
+}
+async function unlinkTodo(todoId){
+  if(!curDetail)return;
+  if(!confirm('确认解除该执行项与本决策的关联？'))return;
+  try{
+    const r=await fetch(API+'/'+curDetail.id+'/execution-todos/'+todoId,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason:'手动解除关联'})});
+    const d=await r.json();
+    if(!r.ok){toast(d.error||'解除失败');return}
+    toast('已解除关联');openDetail(curDetail.id);loadList(curPage);
+  }catch(e){toast('解除失败: '+e.message)}
+}
+
+loadMeta().then(()=>{loadStats();loadList(1)});
+</script>
+<script src="chat-widget.js"></script>
+<script src="feedback-widget.js"></script>
+<script src="brand.js"></script>
+<script src="permission-check.js"></script><script>PermissionCheck.init();</script></body></html>

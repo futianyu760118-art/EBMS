@@ -54,4 +54,7 @@ router.use('/order-check', require('./order-check'));
 router.use('/sop', require('./sop'));
 router.use('/im', require('./im'));
 
+// [Target Module: M03 EBMS] Decision 视图——决策背景 / 候选方案 / 所需证据 / 决策结论（PAND-87 / F9）
+router.use('/decisions', require('./decision'));
+
 module.exports = router;
