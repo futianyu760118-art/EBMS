@@ -57,6 +57,7 @@ const sidebarItems = [
   { href: 'labor.html',          label: '人工库',       group: 'business', perm: 'labor:view' },
   { href: 'product-labor-rate.html', label: '成品工价库', group: 'business', perm: 'labor-rate:view' },
   { href: 'order-analysis.html', label: '订单分析库',   group: 'business', perm: 'order-analysis:view' },
+  { href: 'judgment.html',       label: '跨域经营判断', group: 'business', perm: 'ebms:judgment:view' },
   { href: 'material-issue.html', label: '领料单',       group: 'business', perm: 'material-issue:view' },
   { href: 'sop.html', label: '产销协调会', group: 'business', perm: 'prod-coord:view' },
   { href: 'ai-assistant.html',   label: 'AI 经营助手',  group: 'business', perm: 'ai:view' },

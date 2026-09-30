@@ -534,7 +534,10 @@ const permissions = [
     { name: '删除阿米巴', code: 'amiba:delete', module: '阿米巴经营', description: '删除阿米巴记录', created_at: now() },
     { name: '审批阿米巴', code: 'amiba:audit', module: '阿米巴经营', description: '内部定价审批、争议仲裁', created_at: now() },
     { name: '核算阿米巴', code: 'amiba:calc', module: '阿米巴经营', description: '月度核算、目标拆解、结项核算', created_at: now() },
-    { name: '导出阿米巴', code: 'amiba:export', module: '阿米巴经营', description: '导出阿米巴经营数据', created_at: now() }
+    { name: '导出阿米巴', code: 'amiba:export', module: '阿米巴经营', description: '导出阿米巴经营数据', created_at: now() },
+    // 跨域经营判断（PAND-91 / AEOS M03）
+    { name: '查看跨域经营判断', code: 'ebms:judgment:view', module: '跨域经营判断', description: '查看跨域经营判断结论、引用的专业中心结论与抽样比对', created_at: now() },
+    { name: '管理跨域经营判断', code: 'ebms:judgment:manage', module: '跨域经营判断', description: '接入专业中心结论、生成跨域经营判断', created_at: now() }
   ];
   // 增量补充缺失的权限（保留已存在的权限和已分配的角色权限）
   let permsAdded = 0;
@@ -954,6 +957,33 @@ Object.keys(amibaRolePerms).forEach(roleCode => {
   });
 });
 if (amibaPermsAdded > 0) logger.info('阿米巴经营管理角色权限补充完成，新增 ' + amibaPermsAdded + ' 条');
+
+// ===== 跨域经营判断：角色权限补充（增量，不覆盖用户已配置项）=====
+// 管理者工作面：经营结果可见性跟随各角色是否已具备管理面可见权限（dashboard / report:view）；
+// 结论接入与判断生成属管理动作，仅授予已具备报表可见权限的角色。
+const judgmentRolePerms = {
+  admin: ['ebms:judgment:view', 'ebms:judgment:manage'],
+  sales_manager: ['ebms:judgment:view', 'ebms:judgment:manage'],
+  rd_manager: ['ebms:judgment:view', 'ebms:judgment:manage'],
+  project_manager: ['ebms:judgment:view'],
+  finance: ['ebms:judgment:view'],
+  viewer: ['ebms:judgment:view']
+};
+let judgmentPermsAdded = 0;
+Object.keys(judgmentRolePerms).forEach(roleCode => {
+  const role = roleTable.all().find(r => r.code === roleCode);
+  if (!role) return;
+  judgmentRolePerms[roleCode].forEach(code => {
+    const perm = permTable.all().find(p => p.code === code);
+    if (!perm) return;
+    const exists = rpTable.all().some(rp => rp.role_id === role.id && rp.permission_id === perm.id);
+    if (!exists) {
+      rpTable.insert({ role_id: role.id, permission_id: perm.id, granted_at: now() });
+      judgmentPermsAdded++;
+    }
+  });
+});
+if (judgmentPermsAdded > 0) logger.info('跨域经营判断角色权限补充完成，新增 ' + judgmentPermsAdded + ' 条');
 
 // ===== 阿米巴经营管理：示例数据初始化 =====
 const _amibaOrgTable = getTable('amiba_org');

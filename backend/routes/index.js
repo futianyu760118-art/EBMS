@@ -54,4 +54,7 @@ router.use('/order-check', require('./order-check'));
 router.use('/sop', require('./sop'));
 router.use('/im', require('./im'));
 
+// 跨域经营判断（PAND-91 / AEOS M03）：汇聚专业中心结论，不重算中心内部算法
+router.use('/judgments', require('./judgments'));
+
 module.exports = router;

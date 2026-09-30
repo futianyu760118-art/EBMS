@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+  <script src="icons.js"></script><meta charset="UTF-8"><script src="fetch-auth.js"></script><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>EBMS企业经营管理系统 - 跨域经营判断</title><link rel="stylesheet" href="common.css">
+<style>
+.top-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.top-bar select{padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;background:#fff}
+.btn{padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;white-space:nowrap}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.b1{background:#667eea;color:#fff}.b2{background:#27ae60;color:#fff}.b4{background:#f39c12;color:#fff}
+.banner{background:#eef2ff;border:1px solid #dbe3ff;border-left:4px solid #667eea;border-radius:8px;padding:12px 14px;font-size:12.5px;color:#3b4a6b;line-height:1.7;margin-bottom:14px}
+.banner b{color:#2f3b5c}
+.card{background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.06);padding:18px;margin-bottom:16px}
+.card h3{font-size:15px;color:#333;margin-bottom:12px}
+.verdict{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+.lv{display:inline-block;padding:8px 18px;border-radius:20px;font-size:16px;font-weight:700;color:#fff;flex:none}
+.lv-critical{background:#e74c3c}.lv-warning{background:#f39c12}.lv-attention{background:#3498db}.lv-stable{background:#27ae60}.lv-insufficient_data{background:#95a5a6}
+.vtext{font-size:14px;color:#333;line-height:1.8;flex:1;min-width:260px}
+.kv{display:flex;gap:20px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:#888}
+.kv b{color:#333;font-size:15px}
+.missing{background:#fff8e6;border:1px solid #ffe0a3;border-radius:8px;padding:12px 14px;font-size:13px;color:#8a6100;line-height:1.8}
+.missing .tag{display:inline-block;background:#f39c12;color:#fff;border-radius:4px;padding:1px 8px;font-size:11px;font-weight:600;margin-right:6px}
+.domain-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px}
+.domain-card{background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.06);padding:16px;border-top:3px solid #667eea}
+.domain-card.neg{border-top-color:#e74c3c}
+.domain-card.miss{border-top-color:#f39c12;border-style:dashed;background:#fffdf6}
+.domain-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px}
+.domain-head h4{font-size:14px;color:#333}
+.src{font-size:11px;color:#999;margin-bottom:10px;line-height:1.6;word-break:break-all}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:#f5f6fa;padding:7px 6px;text-align:left;font-weight:600;color:#666;border-bottom:1px solid #eee;white-space:nowrap}
+td{padding:6px;border-bottom:1px solid #f2f2f2;color:#444}
+tr:hover td{background:#f8f9ff}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.neg-v{color:#e74c3c;font-weight:600}
+.pos-v{color:#27ae60}
+.none{color:#bbb}
+.pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:10.5px;font-weight:600;background:#f1f2f6;color:#777;white-space:nowrap}
+.pill-red{background:#fdecea;color:#c0392b}
+.pill-green{background:#e9f7ef;color:#1e8449}
+.tbl-wrap{overflow-x:auto;max-height:52vh;overflow-y:auto}
+.res-pass{background:#e9f7ef;border-left:4px solid #27ae60;border-radius:8px;padding:12px 14px;font-size:13px;color:#1e8449;line-height:1.7;margin-bottom:12px}
+.res-fail{background:#fdecea;border-left:4px solid #e74c3c;border-radius:8px;padding:12px 14px;font-size:13px;color:#c0392b;line-height:1.7;margin-bottom:12px}
+.em{text-align:center;color:#999;padding:26px;font-size:13px}
+.legend{font-size:11.5px;color:#999;margin-top:10px;line-height:1.7}
+</style></head><body data-page-title="跨域经营判断" data-page-perm="ebms:judgment:view">
+<div class="sidebar" id="sidebar"></div>
+<div class="main-content">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <h2>跨域经营判断</h2>
+    <div class="top-bar" style="margin:0">
+      <select id="periodSel" onchange="onPeriodChange()"></select>
+      <button class="btn b1" id="genBtn" onclick="generate()">生成判断</button>
+      <button class="btn b4" id="seedBtn" onclick="seedDemo()">载入演示数据</button>
+    </div>
+  </div>
+
+  <div class="banner" id="scopeBanner">
+    口径声明：EBMS 只汇聚各专业中心（销售 / 生产·交付 / 财务 / 供应链）上报的经营结论，形成跨域经营判断，
+    <b>不重算专业中心内部算法</b>；页面展示值一律原样引用中心上报值。
+  </div>
+
+  <div id="msg"></div>
+
+  <div class="card" id="verdictCard" style="display:none">
+    <h3>跨域经营判断结论</h3>
+    <div class="verdict">
+      <span class="lv" id="lvBadge">—</span>
+      <div class="vtext" id="vText">—</div>
+    </div>
+    <div class="kv">
+      <div>参与判断域<br><b id="kPresent">0</b></div>
+      <div>缺失域<br><b id="kMissing">0</b></div>
+      <div>引用中心结论<br><b id="kRefs">0</b></div>
+      <div>规则版本<br><b id="kRule" style="font-size:12px">—</b></div>
+      <div>生成时间<br><b id="kAt" style="font-size:12px">—</b></div>
+    </div>
+    <div id="missingBox" style="margin-top:12px"></div>
+  </div>
+
+  <div class="card" id="domainCard" style="display:none">
+    <h3>各专业中心结论（原样引用）</h3>
+    <div class="domain-grid" id="domainGrid"></div>
+    <div class="legend">「中心未上报」表示该指标中心未上报偏差值，EBMS 保持空值、不做反推补齐。</div>
+  </div>
+
+  <div class="card" id="refCard" style="display:none">
+    <h3>引用明细与可追溯性</h3>
+    <div id="traceBox" class="legend" style="margin:0 0 10px"></div>
+    <div class="tbl-wrap">
+      <table><thead><tr>
+        <th>来源中心</th><th>来源标注</th><th>中心结论 ID</th><th>来源系统</th><th>结论时间</th><th>版本</th><th>引用指标</th><th>追溯</th>
+      </tr></thead><tbody id="refBody"></tbody></table>
+    </div>
+  </div>
+
+  <div class="card" id="consCard" style="display:none">
+    <h3>判定标准：抽样比对（中心输出值 vs EBMS 展示值）</h3>
+    <div id="consResult"></div>
+    <div class="tbl-wrap">
+      <table><thead><tr>
+        <th>专业中心</th><th>指标</th><th>单位</th><th class="num">中心输出值</th><th class="num">EBMS 展示值</th><th>一致性</th><th>口径说明</th>
+      </tr></thead><tbody id="consBody"></tbody></table>
+    </div>
+    <div id="consSkipped" class="legend"></div>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script src="brand.js"></script>
+<script src="permission-check.js"></script><script>PermissionCheck.init();</script>
+<script>
+const API = '/api/judgments';
+let currentId = null;
+
+function q(id) { return document.getElementById(id); }
+function msg(html, kind) {
+  q('msg').innerHTML = html ? '<div class="banner" style="border-left-color:' + (kind === 'err' ? '#e74c3c' : '#27ae60') + '">' + html + '</div>' : '';
+}
+async function api(path, options) {
+  const res = await fetch(API + path, options);
+  const data = await res.json().catch(function () { return {}; });
+  if (!res.ok) throw new Error(data.error || ('请求失败(' + res.status + ')'));
+  return data;
+}
+function pct(v) {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  if (!isFinite(n)) return null;
+  return (n > 0 ? '+' : '') + n.toFixed(2) + '%';
+}
+
+async function loadDomains() {
+  const d = await api('/domains');
+  const labels = d.domains.map(function (x) { return x.label; }).join(' / ');
+  const req = d.consistency_requirement;
+  q('scopeBanner').innerHTML =
+    '口径声明：EBMS 只汇聚各专业中心（' + esc(labels) + '）上报的经营结论，形成跨域经营判断，'
+    + '<b>不重算专业中心内部算法</b>（recomputed=false，依据 center_reported_values_only）；页面展示值一律原样引用中心上报值。'
+    + '跨域判断至少需 ' + d.min_participating_domains + ' 个域产出结论；判定标准为抽样不少于 '
+    + req.min_sample + ' 条、一致率 ' + (req.required_match_rate * 100) + '%。';
+}
+
+async function loadPeriods() {
+  let items = [];
+  try { items = (await api('/list')).items || []; } catch (e) { items = []; }
+  const periods = items.map(function (x) { return x.period; });
+  ['2026-08', '2026-09'].forEach(function (p) { if (periods.indexOf(p) < 0) periods.push(p); });
+  periods.sort().reverse();
+  q('periodSel').innerHTML = periods.map(function (p) {
+    return '<option value="' + esc(p) + '">' + esc(p) + '</option>';
+  }).join('');
+  return periods;
+}
+
+function onPeriodChange() { loadLatest(); }
+function currentPeriod() { return q('periodSel').value; }
+
+async function seedDemo() {
+  const btn = q('seedBtn'); btn.disabled = true;
+  try {
+    const r = await api('/conclusions/seed-demo', { method: 'POST' });
+    msg('演示数据已载入（新增 ' + r.added + ' 条、更新 ' + r.updated + ' 条）。演示周期：' + r.periods.join('、'));
+    await loadPeriods();
+    q('periodSel').value = r.periods[0];
+    await generate();
+  } catch (e) { msg(esc(e.message), 'err'); }
+  finally { btn.disabled = false; }
+}
+
+async function generate() {
+  const period = currentPeriod();
+  if (!period) return;
+  const btn = q('genBtn'); btn.disabled = true;
+  try {
+    msg('');
+    const j = await api('/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ period: period })
+    });
+    await renderAll(j);
+  } catch (e) { msg(esc(e.message), 'err'); }
+  finally { btn.disabled = false; }
+}
+
+async function loadLatest() {
+  const period = currentPeriod();
+  if (!period) return;
+  try {
+    msg('');
+    const j = await api('/latest?period=' + encodeURIComponent(period));
+    await renderAll(j);
+  } catch (e) {
+    currentId = null;
+    ['verdictCard', 'domainCard', 'refCard', 'consCard'].forEach(function (id) { q(id).style.display = 'none'; });
+    msg(esc(e.message) + ' 可点击「生成判断」按当前已接入的中心结论生成。');
+  }
+}
+
+async function renderAll(j) {
+  currentId = j.id;
+  renderVerdict(j);
+  renderDomains(j);
+  await loadReferences(j.id);
+  await loadConsistency(j.period);
+}
+
+const LEVEL_CLS = { critical: 'lv-critical', warning: 'lv-warning', attention: 'lv-attention', stable: 'lv-stable', insufficient_data: 'lv-insufficient_data' };
+
+function renderVerdict(j) {
+  q('verdictCard').style.display = '';
+  const badge = q('lvBadge');
+  badge.className = 'lv ' + (LEVEL_CLS[j.level] || 'lv-insufficient_data');
+  badge.textContent = j.level_label + (j.level === 'insufficient_data' ? '' : '（' + j.level + '）');
+  q('vText').textContent = j.conclusion_text || '';
+  q('kPresent').textContent = j.participating_count;
+  q('kMissing').textContent = (j.missing_domains || []).length;
+  q('kRefs').textContent = j.reference_count;
+  q('kRule').textContent = j.rule_version || '—';
+  q('kAt').textContent = j.generated_at || '—';
+
+  const details = j.missing_domain_details || [];
+  q('missingBox').innerHTML = details.length
+    ? '<div class="missing">' + details.map(function (d) {
+        return '<div><span class="tag">该域数据缺失</span><b>' + esc(d.center_label) + '</b> — ' + esc(d.missing_reason_label || '') + '；该域不参与判断与引用，其余域判断照常输出。</div>';
+      }).join('') + '</div>'
+    : '';
+}
+
+function metricRows(metrics) {
+  return metrics.map(function (m) {
+    const p = pct(m.deviation_pct);
+    const negCls = (p !== null && Number(m.deviation_pct) < 0) ? 'neg-v' : 'pos-v';
+    const dev = m.deviation_available
+      ? '<span class="' + negCls + '">' + esc(p) + '</span>'
+      : '<span class="pill">中心未上报</span>';
+    const th = m.threshold_pct === null || m.threshold_pct === undefined ? '<span class="none">—</span>' : esc(Math.abs(Number(m.threshold_pct)).toFixed(2) + '%');
+    return '<tr>'
+      + '<td>' + esc(m.name) + '</td>'
+      + '<td>' + esc(m.unit || '') + '</td>'
+      + '<td class="num">' + (m.target === null ? '<span class="none">—</span>' : esc(m.target)) + '</td>'
+      + '<td class="num">' + (m.actual === null ? '<span class="none">—</span>' : esc(m.actual)) + '</td>'
+      + '<td class="num">' + dev + '</td>'
+      + '<td class="num">' + th + '</td>'
+      + '<td>' + (m.deviation_available ? '<span class="pill pill-green">中心上报</span>' : '<span class="pill">保持空值</span>')
+      + (m.calc_note ? '<div class="legend" style="margin:2px 0 0">' + esc(m.calc_note) + '</div>' : '') + '</td>'
+      + '</tr>';
+  }).join('');
+}
+
+function renderDomains(j) {
+  q('domainCard').style.display = '';
+  const order = ['sales', 'production', 'finance', 'supply_chain'];
+  q('domainGrid').innerHTML = order.map(function (code) {
+    const v = (j.domains || {})[code];
+    if (!v) return '';
+    if (!v.available) {
+      return '<div class="domain-card miss">'
+        + '<div class="domain-head"><h4>' + esc(v.center_label) + '</h4><span class="pill" style="background:#f39c12;color:#fff">该域数据缺失</span></div>'
+        + '<div class="src">缺失原因：' + esc(v.missing_reason_label || '') + '</div>'
+        + '<div class="em" style="padding:14px 0">该域未产出结论快照，不参与本次判断与引用</div>'
+        + '</div>';
+    }
+    const negPill = v.has_negative ? '<span class="pill pill-red">存在负向偏差</span>' : '<span class="pill pill-green">正常</span>';
+    return '<div class="domain-card ' + (v.has_negative ? 'neg' : '') + '">'
+      + '<div class="domain-head"><h4>' + esc(v.center_label) + '</h4>' + negPill + '</div>'
+      + '<div class="src">来源：' + esc(v.source_system) + ' · ' + esc(v.as_of || '时间未知') + ' · 版本 ' + esc(v.calculation_version || '—')
+      + '<br>中心结论 ID：' + esc(v.conclusion_id || '—') + ' · 数据截止 ' + esc(v.data_cutoff || '—') + '</div>'
+      + '<table><thead><tr><th>指标</th><th>单位</th><th class="num">目标值</th><th class="num">实际值(中心上报)</th><th class="num">偏差</th><th class="num">阈值</th><th>偏差口径</th></tr></thead>'
+      + '<tbody>' + metricRows(v.metrics) + '</tbody></table>'
+      + '</div>';
+  }).join('');
+}
+
+async function loadReferences(id) {
+  const r = await api('/' + id + '/references');
+  q('refCard').style.display = '';
+  const t = r.traceability || {};
+  q('traceBox').innerHTML = t.all_resolved
+    ? '<span class="pill pill-green">引用可追溯</span> 共 ' + t.reference_count + ' 条引用，全部可回查中心结论快照。'
+    : '<span class="pill pill-red">存在不可追溯引用</span> 未解析：' + esc((t.unresolved_conclusion_ids || []).join('、'));
+  q('refBody').innerHTML = (r.references || []).length ? r.references.map(function (x) {
+    return '<tr>'
+      + '<td>' + esc(x.center_label) + '</td>'
+      + '<td>' + esc(x.source_label) + '</td>'
+      + '<td>' + esc(x.conclusion_id || '—') + '</td>'
+      + '<td>' + esc(x.source_system || '—') + '</td>'
+      + '<td>' + esc(x.as_of || '—') + '</td>'
+      + '<td>' + esc(x.version || '—') + '</td>'
+      + '<td>' + esc((x.metric_codes || []).join('、')) + '</td>'
+      + '<td>' + (t.all_resolved ? '<span class="pill pill-green">已解析</span>' : '<span class="pill pill-red">未解析</span>') + '</td>'
+      + '</tr>';
+  }).join('') : '<tr><td colspan="8" class="em">无引用（参与判断的专业中心域不足）</td></tr>';
+}
+
+async function loadConsistency(period) {
+  let c;
+  try { c = await api('/consistency?period=' + encodeURIComponent(period)); }
+  catch (e) { q('consCard').style.display = 'none'; return; }
+  q('consCard').style.display = '';
+  q('consResult').innerHTML = '<div class="' + (c.passed ? 'res-pass' : 'res-fail') + '">'
+    + esc(c.conclusion) + '<br>抽样 ' + c.sample_size + ' 条（要求 ≥' + c.requirement.min_sample + '）、覆盖 '
+    + c.domains_covered.length + ' 个域、一致率 ' + (c.match_rate * 100).toFixed(2) + '%、未解释差异 '
+    + c.unexplained_difference_count + ' 条。</div>';
+  q('consBody').innerHTML = (c.samples || []).length ? c.samples.map(function (s) {
+    return '<tr>'
+      + '<td>' + esc(s.center_label) + '</td>'
+      + '<td>' + esc(s.metric_name) + '</td>'
+      + '<td>' + esc(s.unit || '') + '</td>'
+      + '<td class="num">' + esc(s.center_value === null ? '—' : s.center_value) + '</td>'
+      + '<td class="num">' + esc(s.ebms_value === null ? '—' : s.ebms_value) + '</td>'
+      + '<td>' + (s.consistent ? '<span class="pill pill-green">一致</span>' : '<span class="pill pill-red">不一致</span>') + '</td>'
+      + '<td>' + esc(s.explanation || '—') + '</td>'
+      + '</tr>';
+  }).join('') : '<tr><td colspan="7" class="em">暂无可比对样本</td></tr>';
+  q('consSkipped').innerHTML = (c.skipped_missing_domains || []).map(function (s) {
+    return '跳过：' + esc(s.center_label) + ' — ' + esc(s.explanation);
+  }).join('<br>');
+}
+
+(async function init() {
+  try { await loadDomains(); } catch (e) { msg(esc(e.message), 'err'); }
+  try { await loadPeriods(); } catch (e) {}
+  await loadLatest();
+})();
+</script>
+</body></html>
