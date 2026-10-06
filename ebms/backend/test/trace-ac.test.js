@@ -231,7 +231,7 @@ test('场景 4：查看来源信息展示所挂载 Evidence 的 source_system �
 
 test('边界：Evidence 缺失 source_system 时来源段显示「来源未标注」，且不回落专业原始表查询', async () => {
   const data = await chain(IDS.metrics.orderDelivery);
-  const unsourced = evidenceById(data, IDS.evidences.unsourced);
+  const unsourced = evidenceById(data, IDS.evidences.document);
 
   assert.notEqual(unsourced, undefined, '未标注来源的证据应在链路中可见');
   assert.equal(unsourced.source.marked, false);
@@ -295,12 +295,23 @@ test('边界：链路上全部证据均未标注来源时，来源段整体为�
   const ids = await linkedEvidenceIds(IDS.metrics.orderDelivery);
   assert.ok(ids.length > 0);
   const { rows: original } = await pool.query(
-    `SELECT id, source_system FROM evidences WHERE id = ANY($1::uuid[])`,
+    `SELECT id, source_type, source_system, source_document_no, source_data_time,
+            source_update_cycle, source_provider, source_entered_by, source_entered_at
+       FROM evidences WHERE id = ANY($1::uuid[])`,
     [ids]
   );
 
   try {
-    await pool.query(`UPDATE evidences SET source_system = NULL WHERE id = ANY($1::uuid[])`, [ids]);
+    // F4（PAND-82）的结构性约束要求来源「整体为空」或「整体齐全」；
+    // 这里把来源标注整体清空（而非只清 source_system），使该链接路上证据均为「来源未标注」。
+    await pool.query(
+      `UPDATE evidences
+          SET source_type = NULL, source_system = NULL, source_document_no = NULL,
+              source_data_time = NULL, source_update_cycle = NULL, source_provider = NULL,
+              source_entered_by = NULL, source_entered_at = NULL
+        WHERE id = ANY($1::uuid[])`,
+      [ids]
+    );
 
     const data = await chain(IDS.metrics.orderDelivery);
     const source = segmentOf(data, 'source');
@@ -318,7 +329,23 @@ test('边界：链路上全部证据均未标注来源时，来源段整体为�
     assert.equal(data.evidences.every((e) => e.source.displayText === '来源未标注'), true);
   } finally {
     for (const row of original) {
-      await pool.query(`UPDATE evidences SET source_system = $2 WHERE id = $1`, [row.id, row.source_system]);
+      await pool.query(
+        `UPDATE evidences
+            SET source_type = $2, source_system = $3, source_document_no = $4, source_data_time = $5,
+                source_update_cycle = $6, source_provider = $7, source_entered_by = $8, source_entered_at = $9
+          WHERE id = $1`,
+        [
+          row.id,
+          row.source_type,
+          row.source_system,
+          row.source_document_no,
+          row.source_data_time,
+          row.source_update_cycle,
+          row.source_provider,
+          row.source_entered_by,
+          row.source_entered_at,
+        ]
+      );
     }
   }
 });

@@ -44,8 +44,6 @@ const IDS = {
     warehouse: 'bbbbbbbb-0005-4000-8000-000000000005',
     financeReport: 'bbbbbbbb-0006-4000-8000-000000000006',
     orderLedger: 'bbbbbbbb-0007-4000-8000-000000000007',
-    // F5（PAND-83）边界：未标注来源系统的证据 → 来源段显示「来源未标注」
-    unsourced: 'bbbbbbbb-0008-4000-8000-000000000008',
   },
   // F11（PAND-89）四视图对象锚点：含「有关联」与「无关联」两组，
   // 前者覆盖全部 6 组类型对（→ 12 个有向组合），后者用于「入口置灰」的边界判定。
@@ -527,16 +525,6 @@ async function seed() {
         sourceSystem: 'M05',
         attachments: [],
       },
-      {
-        id: IDS.evidences.unsourced,
-        type: 'manual_note',
-        title: '产线技改影响口头说明（未标注来源）',
-        formedAt: '2026-09-11T00:00:00+08:00',
-        owner: '生产中心 / 钱厂长',
-        content: '口头说明，尚未标注来源系统，用于验证来源段「来源未标注」边界。',
-        sourceSystem: null,
-        attachments: [],
-      },
     ];
 
     for (const e of evidenceRows) {
@@ -580,8 +568,6 @@ async function seed() {
       [IDS.reasons.capacity, IDS.evidences.manualNote],
       [IDS.reasons.material, IDS.evidences.contract],
       [IDS.reasons.material, IDS.evidences.warehouse],
-      // 「来源未标注」边界：该原因项下同时存在已标注与未标注来源的证据
-      [IDS.reasons.material, IDS.evidences.unsourced],
     ];
     for (const [reasonId, evidenceId] of links) {
       await client.query(
