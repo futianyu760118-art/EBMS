@@ -75,6 +75,23 @@ async function findById(id) {
   return rows[0] || null;
 }
 
+/**
+ * 按指标 id 集合批量取回（口径与总览完全一致：实际值同样只来自 owner_results）。
+ * 供 REPORT 视图装配「报告的关键结果指标」使用——报告不自己取数，沿用 F1 的唯一取数路径。
+ */
+async function listByIds(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return [];
+  const { rows } = await query(
+    `SELECT ${SELECT_FIELDS}
+       FROM result_metrics m
+       ${LATEST_OWNER_RESULT_JOIN}
+       ${OWNER_SUPPLIED_JOIN}
+      WHERE m.id = ANY($1::uuid[])`,
+    [ids]
+  );
+  return rows;
+}
+
 /** 未指定周期时的落地周期：取已配置的最新周期，使决策者登录即可看到指标集。 */
 async function findLatestPeriod() {
   const { rows } = await query(
@@ -87,4 +104,4 @@ async function findLatestPeriod() {
   return rows[0] || null;
 }
 
-module.exports = { listConfigured, findById, findLatestPeriod };
+module.exports = { listConfigured, findById, listByIds, findLatestPeriod };

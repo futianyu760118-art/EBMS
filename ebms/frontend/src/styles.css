@@ -285,3 +285,23 @@ h3 { font-size: 14px; }
 }
 .trace-entry:hover { color: var(--primary); }
 .tag-unmarked { background: var(--warn-bg); color: var(--warn-text); border-color: var(--warn-border); }
+
+/* ---------------- F7 报告视图（PAND-85） ---------------- */
+/* 报告以「结论」为单位：清单为单列卡片流，每张卡片自带落点与三类关联入口 */
+.report-list { display: flex; flex-direction: column; gap: 12px; }
+.report-card { padding: 14px 16px; }
+.report-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.report-card-title { margin: 4px 0; font-size: 16px; }
+.report-conclusion { margin: 8px 0 10px; line-height: 1.6; }
+.report-card .stat-strip { margin-bottom: 10px; }
+.report-card .stat-strip li { flex: 1 1 100px; padding: 6px 10px; }
+.report-card .stat-value { font-size: 16px; }
+.view-nav-count { font-size: 12px; background: #e7effc; color: var(--primary-dark); border-radius: 10px; padding: 2px 9px; }
+
+.filter-bar { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
+.field-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.section-title { margin: 18px 0 8px; font-size: 14px; }
+.create-form { padding: 14px 16px; margin-bottom: 14px; }
+.empty-state { padding: 28px 20px; text-align: center; }
+.empty-state h3 { margin: 0 0 6px; }
+.empty-state .btn { margin-top: 12px; }

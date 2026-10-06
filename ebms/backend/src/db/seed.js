@@ -27,6 +27,9 @@ const IDS = {
     onTimeDelivery: '44444444-0009-4000-8000-000000000009',
     capacityUtilization: '44444444-0010-4000-8000-000000000010',
     inventoryTurnover: '44444444-0011-4000-8000-000000000011',
+    // 2026-08 指标集（供「REPORT 按周期筛选」的正向样例：8 月报告必须有自己的关键指标）
+    cashFlowAug: '44444444-0012-4000-8000-000000000012',
+    arBalanceAug: '44444444-0013-4000-8000-000000000013',
   },
   reasons: {
     capacity: 'aaaaaaaa-0001-4000-8000-000000000001', // 已挂载证据
@@ -46,9 +49,12 @@ const IDS = {
   },
   // F11（PAND-89）四视图对象锚点：含「有关联」与「无关联」两组，
   // 前者覆盖全部 6 组类型对（→ 12 个有向组合），后者用于「入口置灰」的边界判定。
+  // F7（PAND-85）在此之上补充「周期 × 责任域」两维覆盖，用于筛选生效的正向/空态样例。
   reports: {
     linked: 'cccccccc-0001-4000-8000-000000000001', // 关联 TODO/Decision/Evidence
     orphan: 'cccccccc-0002-4000-8000-000000000002', // 无关联（边界）
+    financeSep: 'cccccccc-0003-4000-8000-000000000003', // 2026-09 / 财务（筛选正向样例）
+    financeAug: 'cccccccc-0004-4000-8000-000000000004', // 2026-08 / 财务（周期筛选用例）
   },
   todos: {
     linked: 'dddddddd-0001-4000-8000-000000000001', // 关联 Report/Decision/Evidence
@@ -71,6 +77,8 @@ const VIEW_LINK_FIXTURES = [
   { from: ['decision', 'linked'], to: ['evidence', 'systemRecord'], relationType: 'evidences' },
   // 逐入口置灰用：仅一条关联，故其余两个入口应为「无关联」
   { from: ['todo', 'partial'], to: ['evidence', 'manualNote'], relationType: 'related' },
+  // F7：财务报告仅关联 Evidence → todo / decision 两个入口置灰（部分关联形态）
+  { from: ['report', 'financeSep'], to: ['evidence', 'financeReport'], relationType: 'evidences' },
 ];
 
 // F1 指标集夹具（PAND-79）：12 条，覆盖三家 Owner 模块（M09 财经 / M05 销售 / M06 交付）、
@@ -91,6 +99,15 @@ const METRIC_FIXTURES = [
   { key: 'inventoryTurnover', code: 'inventory_turnover', name: '库存周转率', dimension: 'business', unit: '次', ownerModule: 'M06', direction: 'higher_better', target: 6.0, goalRef: 'MG-2026-09-BIZ-06', asOf: '2026-09-28T00:00:00+08:00' },
 ];
 
+// 2026-08 指标集夹具（REPORT 周期筛选用例）：与 9 月共用业务口径（编码 + 周期唯一），
+// 只是周期不同。单独成组，避免影响 2026-09 指标集条目数的断言。
+const METRIC_AUG_FIXTURES = [
+  { key: 'cashFlowAug', code: 'cash_flow', name: '经营性现金流', dimension: 'finance', unit: '万元', ownerModule: 'M09', direction: 'higher_better', target: 1400, goalRef: 'MG-2026-08-FIN-04', asOf: '2026-08-31T23:59:59+08:00', periodValue: '2026-08' },
+  { key: 'arBalanceAug', code: 'ar_balance', name: '应收账款余额', dimension: 'finance', unit: '万元', ownerModule: 'M09', direction: 'lower_better', target: 3200, goalRef: 'MG-2026-08-FIN-06', asOf: '2026-08-31T23:59:59+08:00', periodValue: '2026-08' },
+];
+
+const ALL_METRIC_FIXTURES = [...METRIC_FIXTURES, ...METRIC_AUG_FIXTURES];
+
 // Owner Result 夹具：实际值的唯一来源（EBMS 只登记、不重算）。
 // 覆盖三种偏差形态：超阈值未达标、阈值内达标、越低越好方向。
 const OWNER_RESULT_FIXTURES = [
@@ -106,6 +123,21 @@ const OWNER_RESULT_FIXTURES = [
   { resultId: 'res-M06-inventory-turnover-2026-09', metricKey: 'inventoryTurnover', sourceSystem: 'M06', metricName: '库存周转率', value: 5.2, unit: '次', calculationVersion: 'DELIV-2026.09-v4', traceId: 'trace-deliv-202609-inv', evidenceKeys: ['warehouse'] },
   // 边界：M05 供给过「新增客户数」，但只到 8 月 → 9 月应判为「来源模块未同步本期数据」
   { resultId: 'res-M05-new-customer-2026-08', metricKey: 'newCustomerCount', sourceSystem: 'M05', metricName: '新增客户数', value: 37, unit: '家', calculationVersion: 'SALES-CUST-2026.08-v1', traceId: 'trace-sales-202608-cust', evidenceKeys: ['orderLedger'], periodValue: '2026-08', occurredAt: '2026-08-31T23:59:59+08:00' },
+  // 2026-08 报告的关键指标实际值
+  { resultId: 'res-M09-cash-flow-2026-08', metricKey: 'cashFlowAug', sourceSystem: 'M09', metricName: '经营性现金流', value: 1480, unit: '万元', calculationVersion: 'FIN-2026.08-v2', traceId: 'trace-fin-202608-cash', evidenceKeys: ['financeReport'], periodValue: '2026-08', occurredAt: '2026-08-31T23:59:59+08:00' },
+  { resultId: 'res-M09-ar-balance-2026-08', metricKey: 'arBalanceAug', sourceSystem: 'M09', metricName: '应收账款余额', value: 3520, unit: '万元', calculationVersion: 'FIN-2026.08-v2', traceId: 'trace-fin-202608-arb', evidenceKeys: ['financeReport'], periodValue: '2026-08', occurredAt: '2026-08-31T23:59:59+08:00' },
+];
+
+// F7（PAND-85）报告夹具：以「周期 × 责任域」两维覆盖筛选判定。
+//   linked      ：2026-09 / 交付，三入口齐全（AC 场景 2 的完整形态）
+//   orphan      ：2026-09 / 销售，无关联（三类入口置灰边界）
+//   financeSep  ：2026-09 / 财务（责任域筛选正向样例）
+//   financeAug  ：2026-08 / 财务（周期筛选正向样例；2026-08 + 销售 → 空态）
+const REPORT_FIXTURES = [
+  { key: 'linked', code: 'RPT-2026-09-01', title: '9月经营月报：订单交付偏差', conclusion: '订单交付达成 87%，低于目标 13 个百分点，主因产能不足。', periodType: 'month', periodValue: '2026-09', domain: 'delivery', owner: '经营管理部', metrics: ['orderDelivery', 'capacityUtilization'] },
+  { key: 'orphan', code: 'RPT-2026-09-02', title: '9月经营月报：渠道库存', conclusion: '渠道库存周转放缓，暂未形成偏差结论。', periodType: 'month', periodValue: '2026-09', domain: 'sales', owner: '经营管理部', metrics: ['orderAmount', 'newCustomerCount'] },
+  { key: 'financeSep', code: 'RPT-2026-09-03', title: '9月财务月报：收入与成本偏差', conclusion: '营业收入 11280 万元，低于目标 6%；营业成本超目标 5.1%，毛利率承压。', periodType: 'month', periodValue: '2026-09', domain: 'finance', owner: '财经管理部', metrics: ['revenue', 'grossMarginRate', 'operatingCost'] },
+  { key: 'financeAug', code: 'RPT-2026-08-01', title: '8月财务月报：现金流与应收', conclusion: '8 月经营性现金流达成目标；应收账款余额高于目标 10%。', periodType: 'month', periodValue: '2026-08', domain: 'finance', owner: '财经管理部', metrics: ['cashFlowAug', 'arBalanceAug'] },
 ];
 
 // F4 来源标注夹具（PAND-82）：覆盖内部系统 / 外部数据 / 人工录入三类，
@@ -206,7 +238,7 @@ async function seed() {
 
     // 幂等：本脚本是开发/自检夹具，先清空 EBMS 自有数据再灌入。
     await client.query(
-      'TRUNCATE reason_evidences, object_links, audit_log, evidences, owner_results, result_reasons, result_metrics, reports, todos, decisions CASCADE'
+      'TRUNCATE reason_evidences, report_metrics, object_links, audit_log, evidences, owner_results, result_reasons, result_metrics, reports, todos, decisions CASCADE'
     );
 
     await client.query(
@@ -219,7 +251,7 @@ async function seed() {
 
     // ---------------------------------------------------------------- F1 指标集（PAND-79）
     // 目标值来自 M03 Management Goal（EBMS 自有）；实际值不在此表，一律由 owner_results 供给。
-    for (const [index, m] of METRIC_FIXTURES.entries()) {
+    for (const [index, m] of ALL_METRIC_FIXTURES.entries()) {
       await client.query(
         `INSERT INTO result_metrics
            (id, code, name, dimension, period_type, period_value, as_of, unit, owner_module,
@@ -231,7 +263,7 @@ async function seed() {
           m.name,
           m.dimension,
           SEED_PERIOD.periodType,
-          SEED_PERIOD.periodValue,
+          m.periodValue ?? SEED_PERIOD.periodValue,
           m.asOf,
           m.unit,
           m.ownerModule,
@@ -246,7 +278,7 @@ async function seed() {
 
     // 登记 Owner Result（实际值的唯一来源）。EBMS 只按契约登记，不做任何重算。
     for (const r of OWNER_RESULT_FIXTURES) {
-      const metric = METRIC_FIXTURES.find((m) => m.key === r.metricKey);
+      const metric = ALL_METRIC_FIXTURES.find((m) => m.key === r.metricKey);
       const evidenceIds = r.evidenceKeys.map((k) => IDS.evidences[k]);
       const inserted = await client.query(
         `INSERT INTO owner_results
@@ -461,13 +493,49 @@ async function seed() {
       );
     }
 
-    // ---------------------------------------------------------------- F11 四视图对象（PAND-89）
-    await client.query(
-      `INSERT INTO reports (id, code, title, conclusion, period_type, period_value, domain, owner, created_by) VALUES
-         ($1, 'RPT-2026-09-01', '9月经营月报：订单交付偏差', '订单交付达成 87%，低于目标 13 个百分点，主因产能不足。', 'month', '2026-09', '销售', '经营管理部', $3),
-         ($2, 'RPT-2026-09-02', '9月经营月报：渠道库存',     '渠道库存周转放缓，暂未形成偏差结论。',                 'month', '2026-09', '销售', '经营管理部', $3)`,
-      [IDS.reports.linked, IDS.reports.orphan, IDS.users.owner]
-    );
+    // ---------------------------------------------------------------- F11 四视图对象（PAND-89）+ F7 报告（PAND-85）
+    // 报告以「结论」为单位组织信息：结论 + 关键结果指标（引用 F1 指标集，不另存/不重算实际值）
+    // + 关联的 TODO / Decision / Evidence 入口（入口由 object_links 推导，不在此处写死）。
+    for (const r of REPORT_FIXTURES) {
+      await client.query(
+        `INSERT INTO reports (id, code, title, conclusion, period_type, period_value, domain, owner, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          IDS.reports[r.key],
+          r.code,
+          r.title,
+          r.conclusion,
+          r.periodType,
+          r.periodValue,
+          r.domain,
+          r.owner,
+          IDS.users.owner,
+        ]
+      );
+      for (const [index, metricKey] of r.metrics.entries()) {
+        await client.query(
+          `INSERT INTO report_metrics (report_id, metric_id, order_no) VALUES ($1, $2, $3)`,
+          [IDS.reports[r.key], IDS.metrics[metricKey], index + 1]
+        );
+      }
+      await client.query(
+        `INSERT INTO audit_log (actor, actor_name, action, entity_type, entity_id, reason_id, after)
+         VALUES ($1, $2, 'report.create', 'report', $3, NULL, $4::jsonb)`,
+        [
+          IDS.users.owner,
+          SEED_ACTOR_NAME,
+          IDS.reports[r.key],
+          JSON.stringify({
+            code: r.code,
+            title: r.title,
+            periodType: r.periodType,
+            periodValue: r.periodValue,
+            domain: r.domain,
+            metricIds: r.metrics.map((k) => IDS.metrics[k]),
+          }),
+        ]
+      );
+    }
 
     await client.query(
       `INSERT INTO todos (id, code, title, source, status, owner, due_at, created_by) VALUES
@@ -514,7 +582,8 @@ async function seed() {
     console.log('[seed]   reason 已有证据 :', IDS.reasons.material, '(2 条)');
     console.log('[seed]   四视图关联     :', VIEW_LINK_FIXTURES.length, '条（覆盖 6 组类型对）');
     console.log('[seed]   无关联对象     : report/todo/decision 各 1 + 证据 1（入口置灰边界）');
-    console.log('[seed]   指标集         :', METRIC_FIXTURES.length, '条（M09 财经 6 / M05 销售 2 / M06 交付 4）');
+    console.log('[seed]   指标集         :', ALL_METRIC_FIXTURES.length, '条（2026-09：', METRIC_FIXTURES.length, ' / 2026-08：', METRIC_AUG_FIXTURES.length, '）');
+    console.log('[seed]   报告           :', REPORT_FIXTURES.length, '份（2026-09 三份 / 2026-08 一份；责任域 delivery / sales / finance）');
     console.log('[seed]   Owner Result   :', OWNER_RESULT_FIXTURES.length, '条（实际值唯一来源）');
     console.log('[seed]   无数据边界     : on_time_delivery（未供给）/ new_customer_count（未同步本期）');
     console.log(
@@ -546,7 +615,10 @@ module.exports = {
   IDS,
   CONTRACT_FILE,
   VIEW_LINK_FIXTURES,
+  REPORT_FIXTURES,
   METRIC_FIXTURES,
+  METRIC_AUG_FIXTURES,
+  ALL_METRIC_FIXTURES,
   OWNER_RESULT_FIXTURES,
   SOURCE_FIXTURES,
   REASON_FIXTURES,
