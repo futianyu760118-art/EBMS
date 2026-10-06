@@ -6,6 +6,7 @@ import ReportDetailView from './views/ReportDetailView.vue';
 import ReportListView from './views/ReportListView.vue';
 import ResultOverviewView from './views/ResultOverviewView.vue';
 import SourceMissingView from './views/SourceMissingView.vue';
+import TodoListView from './views/TodoListView.vue';
 import TraceDrilldownView from './views/TraceDrilldownView.vue';
 import ViewExplorer from './views/ViewExplorer.vue';
 import { DEFAULT_LANDING_VIEW } from './report-view';
@@ -82,7 +83,7 @@ function logout() {
 // F1 的证据引用指向 `#/evidence/<id>`（四视图落点）：落到该 hash 时自动切到四视图，
 // 使「由 evidence_ids 可定位到对应证据」在界面上是一次真实跳转。
 // F5 的 `#/trace/<metricId>` 同形状但不带 type 段，须先于四视图识别，否则会被当成四视图落点。
-// F7 的 `#/report/<id>` 在四视图浏览态下不抢占，避免打断 ViewExplorer 的内部选中态。
+// F7 的 `#/report/<id>`、F8 的 `#/todo/<id>` 各有专属视图，落到对应模块；四视图浏览态下不抢占。
 function openModule(name) {
   activeModule.value = name;
   if (name === 'report') selectedReportId.value = '';
@@ -108,18 +109,22 @@ function syncFromHash() {
     return;
   }
   const route = parseHash(window.location.hash);
-  if (route && route.type === 'report') {
+  if (!route) {
+    // 无落点 hash（浏览器回退到根路径）：报告视图回到清单
+    if (activeModule.value === 'report') selectedReportId.value = '';
+    return;
+  }
+  if (route.type === 'report') {
     if (activeModule.value === 'views') return;
     selectedReportId.value = route.id;
     activeModule.value = 'report';
     return;
   }
-  if (route) {
-    if (activeModule.value !== 'views') activeModule.value = 'views';
+  if (route.type === 'todo') {
+    activeModule.value = 'todo';
     return;
   }
-  // 无落点 hash（浏览器回退到根路径）：报告视图回到清单
-  if (activeModule.value === 'report') selectedReportId.value = '';
+  if (activeModule.value !== 'views') activeModule.value = 'views';
 }
 
 onMounted(() => {
@@ -187,6 +192,14 @@ const selectedReason = () => reasons.value.find((r) => r.id === selectedReasonId
           <button
             type="button"
             class="btn btn-ghost btn-sm"
+            :class="{ active: activeModule === 'todo' }"
+            @click="activeModule = 'todo'"
+          >
+            TODO 待办（F8）
+          </button>
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
             :class="{ active: activeModule === 'views' }"
             @click="openModule('views')"
           >
@@ -233,6 +246,10 @@ const selectedReason = () => reasons.value.find((r) => r.id === selectedReasonId
 
     <main v-else-if="activeModule === 'trace'" class="layout-single">
       <TraceDrilldownView :key="traceMetricId" :metric-id="traceMetricId" />
+    </main>
+
+    <main v-else-if="activeModule === 'todo'" class="layout-single">
+      <TodoListView />
     </main>
 
     <main v-else-if="activeModule === 'views'" class="layout">

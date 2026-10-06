@@ -83,4 +83,15 @@ export const api = {
   viewObjects: (type) => request(`/objects/${type}`),
   viewObject: (type, id) => request(`/objects/${type}/${id}`),
   viewNavigation: (type, id) => request(`/objects/${type}/${id}/links`),
+
+  // F8（PAND-86）TODO 待办视图：状态/来源枚举、列表、详情、认领、指派、流转、规则产生
+  todoMeta: () => request('/todo-meta'),
+  todos: (query = '') => request(`/todos${query}`),
+  todo: (id) => request(`/todos/${id}`),
+  createTodo: (input) => request('/todos', { method: 'POST', body: input, auth: true }),
+  claimTodo: (id) => request(`/todos/${id}/claim`, { method: 'POST', body: {}, auth: true }),
+  assignTodo: (id, owner) => request(`/todos/${id}/assign`, { method: 'POST', body: { owner }, auth: true }),
+  transitionTodo: (id, status) =>
+    request(`/todos/${id}/transitions`, { method: 'POST', body: { status }, auth: true }),
+  scanTodos: (input = {}) => request('/todos/rule-scan', { method: 'POST', body: input, auth: true }),
 };
