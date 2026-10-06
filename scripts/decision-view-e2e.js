@@ -5,7 +5,8 @@
  *        node scripts/decision-view-e2e.js
  *
  * 与 scripts/*.test.js（纯规则 / 静态断言）不同，本脚本会：
- *   1) 在 127.0.0.1:3313 真实拉起 backend/server.js（退出时只杀该子进程）；
+ *   1) 先在 127.0.0.1:3314 预热启动一次（见下方「预热启动」注释）、随后在 127.0.0.1:3313
+ *      真实拉起 backend/server.js 跑断言（退出时只杀自己拉起的子进程）；
  *   2) 清空 database/{decisions,decision_changes,todos}.json 以保证断言可重复
  *      （todos 为 F8 共享事实源，本脚本仅用于隔离测试环境）。
  * 请勿在生产数据目录上运行。
@@ -46,6 +47,41 @@ async function main() {
     });
   });
 
+  // ===== 预热启动 =====
+  // 既有口径（基线提交 9456fa0 上同样复现，非本功能引入）：全新库的第一次启动中，
+  // initData 先写入的 roles / permissions 在随后的「角色权限」播种阶段被读回为空表，
+  // 于是除 admin（角色直通）外所有角色首启后没有任何权限，须再启动一次、表从磁盘载入后才生效。
+  // 为让本脚本在全新检出上可重复，这里先做一次预热启动，让初始化数据落盘。
+  {
+    const WARM_PORT = PORT + 1;
+    const warm = spawn(process.execPath, ['server.js'], {
+      cwd: BACKEND,
+      env: Object.assign({}, process.env, { PORT: String(WARM_PORT), NODE_ENV: 'development' }),
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let wlog = '';
+    warm.stdout.on('data', d => { wlog += d.toString(); });
+    warm.stderr.on('data', d => { wlog += d.toString(); });
+    const warmReady = async () => {
+      try {
+        const res = await fetch(`http://127.0.0.1:${WARM_PORT}/api/users/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: 'admin', password: 'admin123' })
+        });
+        return res.status === 200;
+      } catch (e) { return false; }
+    };
+    let wready = false;
+    for (let i = 0; i < 120; i++) {
+      if (await warmReady()) { wready = true; break; }
+      await sleep(500);
+    }
+    try { warm.kill(); } catch (e) {}
+    assert.ok(wready, '预热启动未在预期时间内就绪；日志尾部：\n' + wlog.slice(-2000));
+    await sleep(500); // 等预热进程退出、初始化数据落盘
+  }
+
   const child = spawn(process.execPath, ['server.js'], {
     cwd: BACKEND,
     env: Object.assign({}, process.env, { PORT: String(PORT), NODE_ENV: 'development' }),
@@ -62,9 +98,7 @@ async function main() {
 
   try {
     // ===== 就绪 =====
-    // initData 在 server.js 中同步 require，但其建表/播种写入经 withTableLock 串行排队、
-    // 在事件循环的后续微任务里才真正落盘。只探测「HTTP 有响应」会与播种赛跑，
-    // 因此就绪条件取「路由可达 + 权限播种已生效」两个可观测事实。
+    // 预热启动已让初始化数据落盘，这里的就绪条件取「路由可达 + 权限已生效」两个可观测事实。
     let ready = false;
     let auth = null;
     for (let i = 0; i < 120; i++) {
