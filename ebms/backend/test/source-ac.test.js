@@ -141,7 +141,7 @@ test('场景 1：明细展示来源系统 / 来源单据编号 / 来源数据时
     detail.display.map((d) => d.label),
     ['来源系统', '来源单据编号', '来源数据时间', '提供方']
   );
-  assert.equal(displayValue(detail, 'sourceSystem'), '供应商门户 SRM');
+  assert.equal(displayValue(detail, 'sourceSystem'), 'SUPPLIER-A');
   assert.equal(displayValue(detail, 'sourceDocumentNo'), 'SC-2026-014');
   assert.equal(displayValue(detail, 'sourceProvider'), 'A 供应商（外部）');
   assert.ok(displayValue(detail, 'sourceDataTime'), '来源数据时间非空');

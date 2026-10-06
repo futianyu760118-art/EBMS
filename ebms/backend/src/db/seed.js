@@ -41,6 +41,8 @@ const IDS = {
     warehouse: 'bbbbbbbb-0005-4000-8000-000000000005',
     financeReport: 'bbbbbbbb-0006-4000-8000-000000000006',
     orderLedger: 'bbbbbbbb-0007-4000-8000-000000000007',
+    // F5（PAND-83）边界：未标注来源系统的证据 → 来源段显示「来源未标注」
+    unsourced: 'bbbbbbbb-0008-4000-8000-000000000008',
   },
   // F11（PAND-89）四视图对象锚点：含「有关联」与「无关联」两组，
   // 前者覆盖全部 6 组类型对（→ 12 个有向组合），后者用于「入口置灰」的边界判定。
@@ -112,7 +114,7 @@ const OWNER_RESULT_FIXTURES = [
 const SOURCE_FIXTURES = {
   contract: {
     sourceType: 'external',
-    sourceSystem: '供应商门户 SRM',
+    sourceSystem: 'SUPPLIER-A',
     sourceDocumentNo: 'SC-2026-014',
     sourceDataTime: '2026-08-15T00:00:00+08:00',
     updateCycle: 'month',
@@ -120,7 +122,7 @@ const SOURCE_FIXTURES = {
   },
   systemRecord: {
     sourceType: 'internal',
-    sourceSystem: 'MES 生产执行系统',
+    sourceSystem: 'M06',
     sourceDocumentNo: 'MES-CAP-2026-09',
     sourceDataTime: '2026-09-20T00:00:00+08:00',
     updateCycle: 'day',
@@ -157,6 +159,15 @@ const SOURCE_FIXTURES = {
   },
   // document（生产工单 GW-2026-0901）刻意不在此：来源缺失边界
 };
+
+// F5（PAND-83）链路夹具：原因项 → 第 2 段「原因（归因）」。
+// 覆盖归因口径的两种取值：映射至 Exception（reason_code + severity 齐全）、
+// 以及兜底口径「M03 自有归因分析」（缺 reason_code / severity，由库内生成列自动判定）。
+const REASON_FIXTURES = [
+  { key: 'capacity', name: '产能不足', direction: 'negative', contributionPct: 40.0, owner: '生产中心', reasonCode: 'CAPACITY_SHORTAGE', severity: 'high' },
+  { key: 'channel', name: '渠道压货', direction: 'negative', contributionPct: 25.0, owner: '销售中心', reasonCode: null, severity: null },
+  { key: 'material', name: '原材料涨价', direction: 'negative', contributionPct: 20.0, owner: '供应链中心', reasonCode: 'MATERIAL_PRICE_RISE', severity: 'medium' },
+];
 
 const CONTRACT_FILE = '采购框架合同_SC-2026-014.pdf';
 const SEED_ACTOR_NAME = '李责任（管理责任人）';
@@ -280,14 +291,29 @@ async function seed() {
       );
     }
 
-    await client.query(
-      `INSERT INTO result_reasons (id, metric_id, name, direction, contribution_pct, owner, order_no) VALUES
-         ($1, $4, '产能不足',     'negative', 40.00, '生产中心',   1),
-         ($2, $4, '渠道压货',     'negative', 25.00, '销售中心',   2),
-         ($3, $4, '原材料涨价',   'negative', 20.00, '供应链中心', 3)`,
-      [IDS.reasons.capacity, IDS.reasons.channel, IDS.reasons.material, IDS.metric]
-    );
+    // 原因项：attribution_kind 为库内生成列（不在此写入），由 reason_code / severity 是否齐全决定。
+    for (const [index, r] of REASON_FIXTURES.entries()) {
+      await client.query(
+        `INSERT INTO result_reasons
+           (id, metric_id, name, direction, contribution_pct, owner, order_no, reason_code, severity)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          IDS.reasons[r.key],
+          IDS.metric,
+          r.name,
+          r.direction,
+          r.contributionPct,
+          r.owner,
+          index + 1,
+          r.reasonCode,
+          r.severity,
+        ]
+      );
+    }
 
+    // F5（PAND-83）第 4 段夹具：source_system 即「来源」段的取值来源（字段，不是独立实体）。
+    // 覆盖内部专业系统（M05/M06/M09）与外部数据提供方两类；unsourced 一条**刻意留空**，
+    // 用于断言「来源未标注」且不回落专业原始表查询。
     const evidenceRows = [
       {
         id: IDS.evidences.contract,
@@ -296,6 +322,7 @@ async function seed() {
         formedAt: '2026-08-15T00:00:00+08:00',
         owner: '供应链中心 / 王采购',
         content: '与 A 供应商签订的年度框架采购合同，附件为签署版扫描件。',
+        sourceSystem: 'SUPPLIER-A',
         attachments: [{ filename: CONTRACT_FILE, storage_key: CONTRACT_FILE, size_bytes: pdfBuffer.length }],
       },
       {
@@ -305,6 +332,7 @@ async function seed() {
         formedAt: '2026-09-01T00:00:00+08:00',
         owner: '生产中心 / 赵计划',
         content: '9 月首周生产工单，含计划产量与实际产量记录。',
+        sourceSystem: 'M06',
         attachments: [],
       },
       {
@@ -314,6 +342,7 @@ async function seed() {
         formedAt: '2026-09-20T00:00:00+08:00',
         owner: '生产中心 / 系统',
         content: 'MES 导出的产能达成率明细：计划 1200 台，实际 1044 台，达成率 87%。',
+        sourceSystem: 'M06',
         attachments: [],
       },
       {
@@ -323,6 +352,7 @@ async function seed() {
         formedAt: '2026-09-10T00:00:00+08:00',
         owner: '生产中心 / 钱厂长',
         content: '2 号线于 9/8–9/12 进行技改停产，累计停产 5 天，折算影响产量约 180 台。',
+        sourceSystem: 'M06',
         attachments: [],
       },
       {
@@ -332,6 +362,7 @@ async function seed() {
         formedAt: '2026-09-18T00:00:00+08:00',
         owner: '供应链中心 / 系统',
         content: 'WMS 库存周转与呆滞物料导出，用于佐证原材料涨价的影响范围。',
+        sourceSystem: 'M06',
         attachments: [],
       },
       {
@@ -341,6 +372,7 @@ async function seed() {
         formedAt: '2026-09-30T00:00:00+08:00',
         owner: '财务中心 / 系统',
         content: 'M09 财经自治月结导出：收入、成本、毛利率、现金流、应收应付口径明细。',
+        sourceSystem: 'M09',
         attachments: [],
       },
       {
@@ -350,6 +382,17 @@ async function seed() {
         formedAt: '2026-09-28T00:00:00+08:00',
         owner: '销售中心 / 系统',
         content: 'M05 销售自治台账导出：商务状态订单金额、新增客户数。',
+        sourceSystem: 'M05',
+        attachments: [],
+      },
+      {
+        id: IDS.evidences.unsourced,
+        type: 'manual_note',
+        title: '产线技改影响口头说明（未标注来源）',
+        formedAt: '2026-09-11T00:00:00+08:00',
+        owner: '生产中心 / 钱厂长',
+        content: '口头说明，尚未标注来源系统，用于验证来源段「来源未标注」边界。',
+        sourceSystem: null,
         attachments: [],
       },
     ];
@@ -395,6 +438,8 @@ async function seed() {
       [IDS.reasons.capacity, IDS.evidences.manualNote],
       [IDS.reasons.material, IDS.evidences.contract],
       [IDS.reasons.material, IDS.evidences.warehouse],
+      // 「来源未标注」边界：该原因项下同时存在已标注与未标注来源的证据
+      [IDS.reasons.material, IDS.evidences.unsourced],
     ];
     for (const [reasonId, evidenceId] of links) {
       await client.query(
@@ -477,6 +522,8 @@ async function seed() {
       Object.keys(SOURCE_FIXTURES).length,
       '条（内部/外部/人工），缺失 1 条（生产工单 → 待补清单）'
     );
+    console.log('[seed]   四层链路       : 订单交付达成率 → 3 原因项 → 7 证据 + 1 条来源未标注');
+    console.log('[seed]   断点边界       : 渠道压货（无证据段）/ cash_flow（无原因段）/ EVD 未标注来源（来源段）');
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -502,5 +549,6 @@ module.exports = {
   METRIC_FIXTURES,
   OWNER_RESULT_FIXTURES,
   SOURCE_FIXTURES,
+  REASON_FIXTURES,
   SEED_PERIOD,
 };
