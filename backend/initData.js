@@ -548,62 +548,6 @@ const permissions = [
     logger.info('权限数据补充完成，新增 ' + permsAdded + ' 条缺失权限');
   }
 
-  // ===== 新库（费用库/人工库）增量授权：跟随各角色已有的 material 权限自动补授 =====
-  // 设计：费用/人工库是经营中心基础数据，可见范围与物料库保持一致；
-  //      已部署环境 rpTable 已有数据，首次 grantPerms 不会执行，故此处每次启动做幂等增量补授。
-  try {
-    const _rpTable = getTable('role_permissions');
-    const _allRoles = roleTable.all();
-    const _allPerms = permTable.all();
-    const _code2id = {}; _allPerms.forEach(p => { _code2id[p.code] = p.id; });
-    const _allRP = _rpTable.all();
-    const _existing = new Set(_allRP.map(rp => rp.role_id + '|' + rp.permission_id));
-    let _rpAdded = 0;
-    const _grant = (roleId, code) => {
-      const pid = _code2id[code]; if (!pid) return;
-      const key = roleId + '|' + pid;
-      if (_existing.has(key)) return;
-      _rpTable.insert({ role_id: roleId, permission_id: pid, granted_at: now() });
-      _existing.add(key);
-      _rpAdded++;
-    };
-    _allRoles.forEach(role => {
-      if (role.code === 'admin') return; // admin 已拥有全部
-      const rolePermCodes = new Set(
-        _allRP.filter(rp => rp.role_id === role.id)
-          .map(rp => { const p = _allPerms.find(pm => pm.id === rp.permission_id); return p ? p.code : null; })
-          .filter(Boolean)
-      );
-      const isFinance = ['finance', 'cw1', 'hr_manager'].indexOf(role.code) >= 0;
-      const isEngineer = role.code === 'engineer';
-      // 与物料库同可见性：有 material:view 即补查看权限
-      if (rolePermCodes.has('material:view')) {
-        _grant(role.id, 'expense:view');
-        _grant(role.id, 'labor:view');
-        _grant(role.id, 'labor-rate:view');
-      }
-      // 财务/成本相关角色补全权（与 finance 一致）
-      if (isFinance) {
-        ['expense:create', 'expense:edit', 'expense:delete',
-         'labor:create', 'labor:edit', 'labor:delete',
-         'labor-rate:create', 'labor-rate:edit', 'labor-rate:delete'].forEach(c => _grant(role.id, c));
-      }
-      // 工程师：成品工价库 查看+创建+编辑
-      if (isEngineer) {
-        ['labor-rate:view', 'labor-rate:create', 'labor-rate:edit', 'im:view', 'im:send', 'im:search'].forEach(c => _grant(role.id, c));
-      }
-      // 所有非 admin 角色补授消息中心基础权限（IM 是基础沟通工具）
-      if (role.code !== 'admin') {
-        ['im:view', 'im:send'].forEach(c => _grant(role.id, c));
-      }
-    });
-    if (_rpAdded > 0) {
-      logger.info('[initData] 费用库/人工库增量授权完成：补授 ' + _rpAdded + ' 条角色权限');
-    }
-  } catch (e) {
-    logger.warn('[initData] 费用库/人工库增量授权失败:', e.message);
-  }
-
 // 初始化角色权限关联
 const rpTable = getTable('role_permissions');
 if (rpTable.all().length === 0) {
@@ -897,6 +841,65 @@ if (rpTable.all().length === 0) {
   ]);
 
   logger.info('角色权限关联初始化完成');
+}
+
+// ===== 新库（费用库/人工库）增量授权：跟随各角色已有的 material 权限自动补授 =====
+// 设计：费用/人工库是经营中心基础数据，可见范围与物料库保持一致；
+//      已部署环境 rpTable 已有数据，首次 grantPerms 不会执行，故此处每次启动做幂等增量补授。
+// [PAND-183] 必须排在「初始化角色权限关联」之后：该阶段依据各角色**已有**权限推导补授范围，
+// 排在基础授权之前时，全新库看到的是空表 —— 既补不出任何权限，又会让随后的基础授权因
+// rpTable 非空而整体跳过，导致首启各角色只剩零散权限。排在其后则与重启后的结果一致。
+try {
+  const _rpTable = getTable('role_permissions');
+  const _allRoles = roleTable.all();
+  const _allPerms = permTable.all();
+  const _code2id = {}; _allPerms.forEach(p => { _code2id[p.code] = p.id; });
+  const _allRP = _rpTable.all();
+  const _existing = new Set(_allRP.map(rp => rp.role_id + '|' + rp.permission_id));
+  let _rpAdded = 0;
+  const _grant = (roleId, code) => {
+    const pid = _code2id[code]; if (!pid) return;
+    const key = roleId + '|' + pid;
+    if (_existing.has(key)) return;
+    _rpTable.insert({ role_id: roleId, permission_id: pid, granted_at: now() });
+    _existing.add(key);
+    _rpAdded++;
+  };
+  _allRoles.forEach(role => {
+    if (role.code === 'admin') return; // admin 已拥有全部
+    const rolePermCodes = new Set(
+      _allRP.filter(rp => rp.role_id === role.id)
+        .map(rp => { const p = _allPerms.find(pm => pm.id === rp.permission_id); return p ? p.code : null; })
+        .filter(Boolean)
+    );
+    const isFinance = ['finance', 'cw1', 'hr_manager'].indexOf(role.code) >= 0;
+    const isEngineer = role.code === 'engineer';
+    // 与物料库同可见性：有 material:view 即补查看权限
+    if (rolePermCodes.has('material:view')) {
+      _grant(role.id, 'expense:view');
+      _grant(role.id, 'labor:view');
+      _grant(role.id, 'labor-rate:view');
+    }
+    // 财务/成本相关角色补全权（与 finance 一致）
+    if (isFinance) {
+      ['expense:create', 'expense:edit', 'expense:delete',
+       'labor:create', 'labor:edit', 'labor:delete',
+       'labor-rate:create', 'labor-rate:edit', 'labor-rate:delete'].forEach(c => _grant(role.id, c));
+    }
+    // 工程师：成品工价库 查看+创建+编辑
+    if (isEngineer) {
+      ['labor-rate:view', 'labor-rate:create', 'labor-rate:edit', 'im:view', 'im:send', 'im:search'].forEach(c => _grant(role.id, c));
+    }
+    // 所有非 admin 角色补授消息中心基础权限（IM 是基础沟通工具）
+    if (role.code !== 'admin') {
+      ['im:view', 'im:send'].forEach(c => _grant(role.id, c));
+    }
+  });
+  if (_rpAdded > 0) {
+    logger.info('[initData] 费用库/人工库增量授权完成：补授 ' + _rpAdded + ' 条角色权限');
+  }
+} catch (e) {
+  logger.warn('[initData] 费用库/人工库增量授权失败:', e.message);
 }
 
 const annualRolePerms = {

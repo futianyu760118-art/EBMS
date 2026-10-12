@@ -394,11 +394,13 @@ function ensureSeed() {
   scopeTable._invalidate();
 
   // 1) Kernel 权限目录中补齐 M03 视图层权限码
+  // 注意：insert 返回 Promise，不能同步取 r.lastID（会得到 undefined）；按 code 回读新行。
   const permByCode = new Map(permTable.all().map(p => [p.code, p]));
   M03_KERNEL_PERMISSIONS.forEach(p => {
     if (permByCode.has(p.code)) return;
-    const r = permTable.insert({ code: p.code, name: p.name, module: p.module, created_at: now() });
-    permByCode.set(p.code, permTable.findById(r.lastID));
+    permTable.insert({ code: p.code, name: p.name, module: p.module, created_at: now() });
+    const created = permTable.all().find(x => x.code === p.code);
+    if (created) permByCode.set(p.code, created);
   });
 
   // 2) Kernel 角色目录中补齐「决策者」角色（作为普通 Kernel 角色，不新增实体体系）

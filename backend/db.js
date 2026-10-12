@@ -27,12 +27,28 @@ const ENGINE = (() => {
 
 // [H1] 单进程内每表一把 FIFO 写互斥锁：解决 _cache 内存状态被并发写覆盖的问题。
 // 同一张表的 insert/update/delete 串行执行；不是分布式锁，多实例部署需更上层方案。
+// [PAND-183] 队列空闲时同步执行，而非一律排到微任务：启动播种（initData / M01 Kernel）
+// 是顶层同步代码，写入若延后到微任务，紧随其后的读回只能取到空表，角色权限关联便落不下去
+// （全新库首启 role_permissions=0、decision_maker 无权限，须重启一次才自愈）。
+// 空闲即无并发写者，同步执行与「排在队首」等价，不改变互斥语义，仅让调用方读得到自己的写入。
 const _tableTail = new Map();
+const _tablePending = new Map(); // name -> 队列中未结算的写操作数（缺省/0 即空闲）
 function withTableLock(name, fn) {
+  if (!(_tablePending.get(name) > 0)) {
+    let result;
+    try { result = fn(); } catch (e) { return Promise.reject(e); }
+    return Promise.resolve(result);
+  }
   const prev = _tableTail.get(name) || Promise.resolve();
+  _tablePending.set(name, _tablePending.get(name) + 1);
   const next = prev.then(fn, fn);
-  // 链尾用 finally 链式 resolve，避免异常中断后续任务
-  _tableTail.set(name, next.catch(() => undefined));
+  // 链尾用 catch 链式 resolve，避免异常中断后续任务；结算后归还空闲标记
+  const tail = next.catch(() => undefined);
+  _tableTail.set(name, tail);
+  tail.then(() => {
+    const left = _tablePending.get(name) - 1;
+    _tablePending.set(name, left > 0 ? left : 0);
+  });
   return next;
 }
 
