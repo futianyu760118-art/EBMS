@@ -79,3 +79,8 @@ _patch.js
 # SQLite 迁移残留（数据已在 sales.db）
 *.imported-*
 sales.db*
+
+# AEOS 同步通道自检产物（临时数据目录与报告，按需运行 test-aeos-sync.js 生成）
+backend/.aeos-selftest-data/
+backend/.aeos-selftest-report.md
+.aeos-selftest/

@@ -365,9 +365,9 @@ server.listen(PORT, '0.0.0.0', () => {
   const { syncPricingToQuote } = require('./routes/quote');
   const SYNC_INTERVAL = 5 * 60 * 1000;
 
-  function runSync() {
+  async function runSync() {
     try {
-      const result = syncPricingToQuote();
+      const result = await syncPricingToQuote();
       if (result.created > 0 || result.updated > 0) {
         logger.info(`[定时同步] ${result.summary}`);
       }

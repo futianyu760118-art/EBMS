@@ -4,6 +4,7 @@ const { getTable, now } = require('../db');
 const { requirePerm } = require('../auth-middleware');
 const { resolveDataScope, isInScope } = require('../data-scope');
 const { resolveDataScopeV2, buildScopeFilter, combineFilter, logDataPermission } = require('../data-scope-v2');
+const aeos = require('../lib/aeos-hooks');
 
 router.get('/', requirePerm('sample:view'), (req, res) => {
   const { page = 1, limit = 20, keyword, status, inquiry_no } = req.query;
@@ -104,11 +105,11 @@ router.get('/:id', requirePerm('sample:view'), (req, res) => {
   res.json(row);
 });
 
-router.post('/', requirePerm('sample:create'), (req, res) => {
+router.post('/', requirePerm('sample:create'), async (req, res) => {
   const table = getTable('samples');
   const b = req.body;
   if (!b.customer_name) return res.status(400).json({ error: '客户名称为必填项'});
-  const result = table.insert({
+  const result = await table.insert({
     sample_no: b.sample_no || ('SMP' + Date.now() % 1000000), customer_name: b.customer_name || '',
     inquiry_no: b.inquiry_no || '', product_name: b.product_name || '', product_code: b.product_code || '',
     quantity: Number(b.quantity) || 0, sample_type: b.sample_type || '常规',
@@ -116,10 +117,12 @@ router.post('/', requirePerm('sample:create'), (req, res) => {
     send_date: b.send_date || '', confirm_date: b.confirm_date || '',
     created_at: now(), updated_at: now()
   });
-  res.json({ message: '创建成功', data: table.findById(result.lastID) });
+  const created = table.findById(result.lastID);
+  aeos.fireUpsert('Sample', created);   // AEOS 出站（失败不影响业务）
+  res.json({ message: '创建成功', data: created });
 });
 
-router.put('/:id', requirePerm('sample:edit'), (req, res) => {
+router.put('/:id', requirePerm('sample:edit'), async (req, res) => {
   const table = getTable('samples');
   if (!table.findById(req.params.id)) return res.status(404).json({ error: '样品单不存在' });
   const fields = { updated_at: now() };
@@ -127,23 +130,28 @@ router.put('/:id', requirePerm('sample:edit'), (req, res) => {
     if (req.body[f] !== undefined) fields[f] = req.body[f];
   });
   ['quantity'].forEach(f => { if (req.body[f] !== undefined) fields[f] = Number(req.body[f]) || 0; });
-  table.update(req.params.id, fields);
+  await table.update(req.params.id, fields);
+  // 出站必须在写落定后再取行：表写是异步的（db 层 FIFO 锁），未 await 就取行会读到改前值
+  aeos.fireUpsert('Sample', table.findById(req.params.id));
   res.json({ message: '更新成功' });
 });
 
-router.put('/:id/status', requirePerm('sample:edit'), (req, res) => {
+router.put('/:id/status', requirePerm('sample:edit'), async (req, res) => {
   const table = getTable('samples');
   if (!table.findById(req.params.id)) return res.status(404).json({ error: '不存在' });
   const valid = ['pending','confirmed','producing','sent','customer_confirmed','completed'];
   if (!valid.includes(req.body.status)) return res.status(400).json({ error: '无效状态' });
-  table.update(req.params.id, { status: req.body.status, updated_at: now() });
+  await table.update(req.params.id, { status: req.body.status, updated_at: now() });
+  aeos.fireUpsert('Sample', table.findById(req.params.id));
   res.json({ message: '状态更新' });
 });
 
-router.delete('/:id', requirePerm('sample:delete'), (req, res) => {
+router.delete('/:id', requirePerm('sample:delete'), async (req, res) => {
   const table = getTable('samples');
-  if (!table.findById(req.params.id)) return res.status(404).json({ error: '不存在' });
-  table.delete(req.params.id);
+  const row = table.findById(req.params.id);
+  if (!row) return res.status(404).json({ error: '不存在' });
+  await table.delete(req.params.id);
+  aeos.fireDelete('Sample', row);
   res.json({ message: '删除成功' });
 });
 

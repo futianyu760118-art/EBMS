@@ -8,6 +8,7 @@ const { resolveDataScopeV2, buildScopeFilter, combineFilter, logDataPermission }
 const XLSX = require('xlsx');
 const PDFDocument = require('pdfkit');
 const multer = require('multer');
+const aeos = require('../lib/aeos-hooks');
 const uploadMem = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 ensureTable('product_configs');
@@ -836,7 +837,7 @@ router.put('/quotations/:id', requirePerm('inquiry:edit'), (req, res) => {
 });
 
 // ===== 流程推送：提交至研发核价 =====
-router.post('/:id/submit-pricing', requirePerm('inquiry:status'), (req, res) => {
+router.post('/:id/submit-pricing', requirePerm('inquiry:status'), async (req, res) => {
   const { operator, config_id } = req.body;
   const table = getTable('inquiries');
   const inquiry = table.findById(req.params.id);
@@ -846,23 +847,24 @@ router.post('/:id/submit-pricing', requirePerm('inquiry:status'), (req, res) => 
     return res.status(400).json({ error: '当前状态不允许提交核价' });
   }
 
-  table.update(req.params.id, { status: 'pending_pricing', updated_at: now() });
+  await table.update(req.params.id, { status: 'pending_pricing', updated_at: now() });
 
   // 更新配置表状态
   if (config_id) {
     const configTable = getTable('product_configs');
-    configTable.update(config_id, { status: 'submitted', updated_at: now() });
+    await configTable.update(config_id, { status: 'submitted', updated_at: now() });
   }
 
   const statusTable = getTable('inquiry_status_changes');
   statusTable.insert({ inquiry_id: Number(req.params.id), status: 'pending_pricing', changed_by: operator || 'system', changed_at: now(), reason: '销售提交研发核价' });
 
   logOperation('提交核价', operator || 'system', `询价单 ${inquiry.serial_number} 已提交研发核价`, Number(req.params.id));
+  aeos.fireUpsert('Inquiry', inquiry.serial_number);
   res.json({ message: '已提交研发核价' });
 });
 
 // ===== 研发核价确认 =====
-router.post('/:id/confirm-pricing', requirePerm('inquiry:price'), (req, res) => {
+router.post('/:id/confirm-pricing', requirePerm('inquiry:price'), async (req, res) => {
   const { operator, material_cost, process_cost, accessory_cost, estimated_loss,
           base_cost, profit_rate, discount_rate, final_price, pricing_remarks } = req.body;
   const table = getTable('inquiries');
@@ -883,9 +885,10 @@ router.post('/:id/confirm-pricing', requirePerm('inquiry:price'), (req, res) => 
   if (discount_rate !== undefined) updates.discount_rate = Number(discount_rate);
   if (final_price !== undefined) updates.final_price = Number(final_price);
 
-  table.update(req.params.id, updates);
+  await table.update(req.params.id, updates);
 
   const quotationTable = getTable('quotations');
+  // 报价单须按核价后的询价值生成：await 写落定再读行（未 await 会取到改前值）
   const updatedInquiry = table.findById(req.params.id);
   quotationTable.insert({
     quote_no: genQuoteNo(),
@@ -938,11 +941,12 @@ router.post('/:id/confirm-pricing', requirePerm('inquiry:price'), (req, res) => 
   statusTable.insert({ inquiry_id: Number(req.params.id), status: 'pending_quote', changed_by: operator || 'system', changed_at: now(), reason: pricing_remarks || '研发核价确认，已生成报价单' });
 
   logOperation('核价确认', operator || 'system', `询价单 ${inquiry.serial_number} 核价完成，报价 ¥${final_price || inquiry.final_price}，已生成报价单`, Number(req.params.id));
+  aeos.fireUpsert('Inquiry', inquiry.serial_number);
   res.json({ message: '核价确认完成，已生成报价单' });
 });
 
 // ===== 批量导入 =====
-router.post('/batch', requirePerm('inquiry:import'), (req, res) => {
+router.post('/batch', requirePerm('inquiry:import'), async (req, res) => {
   const inquiries = req.body;
   if (!Array.isArray(inquiries) || inquiries.length === 0) {
     return res.status(400).json({ error: '请提供询价单数组' });
@@ -951,14 +955,15 @@ router.post('/batch', requirePerm('inquiry:import'), (req, res) => {
   let successCount = 0;
   let errorCount = 0;
   const errors = [];
-  inquiries.forEach((item, index) => {
+  for (let index = 0; index < inquiries.length; index++) {
+    const item = inquiries[index];
     try {
       if (!item.customer_name || !item.external_model || !item.quantity) {
         errorCount++;
         errors.push({ row: index + 1, error: '缺少必填字段(客户名称/产品型号/数量)' });
-        return;
+        continue;
       }
-      table.insert({
+      const ins = await table.insert({
         serial_number: genSerial() + index,
         customer_name: item.customer_name, customer_source: item.customer_source,
         country_region: item.country_region || '',
@@ -983,18 +988,20 @@ router.post('/batch', requirePerm('inquiry:import'), (req, res) => {
         final_price: 0, quoted_at: null, follow_up_records: '', lost_reason: '',
         created_at: now(), updated_at: now()
       });
-      const lastInsert = table.all().slice(-1)[0];
+      // 插入是异步的：必须 await 才能取到本次新增行（否则 all() 尾部还是上一条）
+      const lastInsert = table.findById(ins.lastID);
       if (lastInsert) {
         const statusTable = getTable('inquiry_status_changes');
         statusTable.insert({ inquiry_id: lastInsert.id, status: 'new', changed_by: item.sales_person || 'system', changed_at: now(), reason: '批量导入创建' });
         logOperation('创建询价', item.sales_person || 'system', `批量导入询价单 ${lastInsert.serial_number} [new]`, lastInsert.id);
+        aeos.fireUpsert('Inquiry', lastInsert.serial_number);
       }
       successCount++;
     } catch (e) {
       errorCount++;
       errors.push({ row: index + 1, error: e.message });
     }
-  });
+  }
   logOperation('批量导入', 'system', `批量导入询价单，成功${successCount}条，失败${errorCount}条`, null);
   res.json({ success: successCount, error: errorCount, errors, message: `批量导入完成，成功${successCount}条，失败${errorCount}条` });
 });
@@ -1643,7 +1650,7 @@ router.post('/:id/send-email', requirePerm('inquiry:edit'), async (req, res) => 
 });
 
 // ===== 批量修改 =====
-router.post('/batch-update', requirePerm('inquiry:edit'), (req, res) => {
+router.post('/batch-update', requirePerm('inquiry:edit'), async (req, res) => {
   const { ids, fields, operator } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: '请提供要修改的询价单ID数组' });
   if (!fields || Object.keys(fields).length === 0) return res.status(400).json({ error: '请提供要修改的字段' });
@@ -1671,26 +1678,27 @@ router.post('/batch-update', requirePerm('inquiry:edit'), (req, res) => {
   const statusTable = getTable('inquiry_status_changes');
   let successCount = 0;
   const skippedIds = [];
-  ids.forEach(id => {
+  for (const id of ids) {
     const existing = table.findById(id);
-    if (!existing) return;
+    if (!existing) continue;
     if (updateFields.status && updateFields.status !== existing.status) {
       const allowed = validTransitions[existing.status] || [];
       if (!allowed.includes(updateFields.status)) {
         skippedIds.push({ id, from: existing.status, to: updateFields.status });
-        return;
+        continue;
       }
       statusTable.insert({ inquiry_id: Number(id), status: updateFields.status, changed_by: operator || 'system', changed_at: now(), reason: '批量修改状态' });
     }
-    table.update(id, updateFields);
+    await table.update(id, updateFields);
+    aeos.fireUpsert('Inquiry', existing.serial_number);
     successCount++;
-  });
+  }
   logOperation('批量修改', operator || 'system', `批量修改询价单 ${successCount} 条${skippedIds.length > 0 ? '，跳过违规' + skippedIds.length + '条' : ''}`, null);
   res.json({ success: successCount, skipped: skippedIds, message: `批量修改完成，成功${successCount}条${skippedIds.length > 0 ? '，跳过违规状态跳转' + skippedIds.length + '条' : ''}` });
 });
 
 // ===== 按询价单号批量导入报价库信息（回填询价单报价字段，自动推进状态）=====
-router.post('/import-pricing', requirePerm('inquiry:price'), uploadMem.single('file'), (req, res) => {
+router.post('/import-pricing', requirePerm('inquiry:price'), uploadMem.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: '请上传文件' });
   try {
     const rows = parseImportFile(req.file.buffer, req.file.originalname);
@@ -1724,7 +1732,8 @@ router.post('/import-pricing', requirePerm('inquiry:price'), uploadMem.single('f
     const errors = [];
     const preQuoteStates = ['new', 'cert_configured', 'config_generated', 'pending_pricing', 'pending_quote'];
 
-    rows.forEach((rawRow, index) => {
+    for (let index = 0; index < rows.length; index++) {
+      const rawRow = rows[index];
       // 行字段映射
       let mapped;
       if (customMapping && Object.keys(customMapping).length) {
@@ -1746,7 +1755,7 @@ router.post('/import-pricing', requirePerm('inquiry:price'), uploadMem.single('f
 
       // 按询价单号匹配
       const sn = String(mapped.serial_number || '').trim();
-      if (!sn) { skipped++; errors.push({ row: index + 2, errors: ['缺少询价单号，无法匹配'] }); return; }
+      if (!sn) { skipped++; errors.push({ row: index + 2, errors: ['缺少询价单号，无法匹配'] }); continue; }
 
       let inq = all.find(i => i.serial_number === sn);
       if (!inq) {
@@ -1756,7 +1765,7 @@ router.post('/import-pricing', requirePerm('inquiry:price'), uploadMem.single('f
           return s && (s.includes(low) || low.includes(s));
         });
       }
-      if (!inq) { notFound++; errors.push({ row: index + 2, errors: [`未找到询价单号: ${sn}`] }); return; }
+      if (!inq) { notFound++; errors.push({ row: index + 2, errors: [`未找到询价单号: ${sn}`] }); continue; }
 
       // 组装更新字段
       const fields = { updated_at: now() };
@@ -1776,7 +1785,7 @@ router.post('/import-pricing', requirePerm('inquiry:price'), uploadMem.single('f
       });
 
       if (Object.keys(fields).length <= 1) {
-        skipped++; errors.push({ row: index + 2, errors: [`询价单 ${sn} 未识别到可更新的报价字段`] }); return;
+        skipped++; errors.push({ row: index + 2, errors: [`询价单 ${sn} 未识别到可更新的报价字段`] }); continue;
       }
 
       // 有最终报价且处于报价前状态 → 自动推进为已报价
@@ -1786,9 +1795,10 @@ router.post('/import-pricing', requirePerm('inquiry:price'), uploadMem.single('f
         statusTable.insert({ inquiry_id: Number(inq.id), status: 'quoted', changed_by: operator, changed_at: now(), reason: '批量导入报价库信息' });
       }
 
-      table.update(inq.id, fields);
+      await table.update(inq.id, fields);
+      aeos.fireUpsert('Inquiry', inq.serial_number);
       updated++;
-    });
+    }
 
     table._invalidate();
     logOperation('批量导入报价库信息', operator, `按询价单号回填报价：更新 ${updated} 条，未找到 ${notFound} 条，跳过 ${skipped} 条`, null);
@@ -1916,7 +1926,7 @@ router.get('/:id', requirePerm('inquiry:view'), (req, res) => {
 });
 
 // ===== 询价单模板Excel导入 - 必须在 /:id 之前 =====
-router.post('/import-template', requirePerm('inquiry:import'), (req, res) => {
+router.post('/import-template', requirePerm('inquiry:import'), async (req, res) => {
   const { customer_name, customer_code, customer_source, country_region, sales_person, delivery_date,
           quote_validity, contact_person, contact_phone, contact_email,
           products } = req.body;
@@ -1940,7 +1950,9 @@ router.post('/import-template', requirePerm('inquiry:import'), (req, res) => {
   let autoQuotedCount = 0;
   let pendingPricingCount = 0;
 
-  products.forEach((prod, idx) => {
+  // for 循环而非 forEach：循环内要 await 表写（db 层写操作异步，forEach 回调内无法 await）
+  for (let idx = 0; idx < products.length; idx++) {
+    const prod = products[idx];
     const serialNumber = idx === 0 ? baseSerial : baseSerial + '-' + String(idx + 1).padStart(2, '0');
 
     if (prod.external_model) {
@@ -1959,7 +1971,7 @@ router.post('/import-template', requirePerm('inquiry:import'), (req, res) => {
             return max;
           }, 0);
           const newVariantModel = `${prod.external_model}-${String(maxSeq + 1).padStart(2, '0')}`;
-          prodTable.insert({
+          await prodTable.insert({
             external_model: newVariantModel,
             internal_model: prod.internal_model || existingProduct.internal_model || '',
             category: prod.product_category || existingProduct.category || '',
@@ -2075,7 +2087,8 @@ router.post('/import-template', requirePerm('inquiry:import'), (req, res) => {
       final_price: initialFinalPrice, quoted_at: hasQuotePrice ? now() : null, follow_up_records: '', lost_reason: '',
       created_at: now(), updated_at: now()
     };
-    const result = table.insert(record);
+    // await 到写落定：否则 result.lastID 为 undefined，且紧随的出站钩子读不到该行
+    const result = await table.insert(record);
     createdIds.push(result.lastID);
     created++;
 
@@ -2085,7 +2098,7 @@ router.post('/import-template', requirePerm('inquiry:import'), (req, res) => {
     if (hasQuotePrice) {
       autoQuotedCount++;
       if (!configSource) {
-        configTable.insert({
+        await configTable.insert({
           inquiry_id: result.lastID, product_id: null, model: prod.external_model,
           certificate_compliant: prod.certificate_compliant || '', certificate_level: prod.certificate_level || '',
           fixed_params: JSON.stringify({ product_name: prod.product_name || quoteSource.product_name || '', external_model: prod.external_model, internal_model: prod.internal_model || '', category: prod.product_category || quoteSource.category || '', power: prod.power || quoteSource.power || '' }),
@@ -2095,7 +2108,7 @@ router.post('/import-template', requirePerm('inquiry:import'), (req, res) => {
           status: 'auto_generated', created_at: now(), updated_at: now()
         });
       }
-      quotationTable.insert({
+      await quotationTable.insert({
         quote_no: genQuoteNo(), inquiry_id: result.lastID, inquiry_no: serialNumber,
         customer_name, customer_source: customer_source || '', country_region: country_region || '', sales_person: sales_person || '',
         external_model: prod.external_model, internal_model: prod.internal_model || '',
@@ -2121,7 +2134,7 @@ router.post('/import-template', requirePerm('inquiry:import'), (req, res) => {
         }
         const existingPricing = pricingTable.all().find(b => b.model === externalModel && b.inquiry_no === serialNumber);
         if (!existingPricing) {
-          pricingTable.insert({
+          await pricingTable.insert({
             customer: customer_name, inquiry_no: serialNumber, model: externalModel,
             product_name: prod.product_name || (product ? product.product_name : '') || '',
             power: prod.power || (product ? product.power : '') || '',
@@ -2152,13 +2165,13 @@ router.post('/import-template', requirePerm('inquiry:import'), (req, res) => {
 
     const exists = custTable.all().find(c => c.name === customer_name);
     if (exists && exists.customer_code) {
-      table.update(result.lastID, { customer_code: exists.customer_code });
+      await table.update(result.lastID, { customer_code: exists.customer_code });
     }
-  });
+  }
 
   const exists = custTable.all().find(c => c.name === customer_name);
   if (!exists) {
-    custTable.insert({
+    await custTable.insert({
       name: customer_name, source: customer_source || '线上', customer_source: customer_source || '线上', country_region: country_region || '',
       contact: contact_person || '',
       phone: contact_phone || '',
@@ -2178,15 +2191,17 @@ router.post('/import-template', requirePerm('inquiry:import'), (req, res) => {
     if (contact_person && !exists.contact && !exists.contact_person) custUpdates.contact = contact_person;
     if (contact_phone && !exists.phone) custUpdates.phone = contact_phone;
     if (contact_email && !exists.email) custUpdates.email = contact_email;
-    custTable.update(exists.id, custUpdates);
+    await custTable.update(exists.id, custUpdates);
   }
 
+  // 出站必须在全部行写落定后：钩子按基号读 inquiries 聚合，未落定的行读不到
+  aeos.fireUpsert('Inquiry', baseSerial);
   logOperation('模板导入询价', sales_person || 'system', `询价单 ${baseSerial} 共 ${created} 个产品 (自动报价:${autoQuotedCount}, 待核价:${pendingPricingCount})`, null);
   res.json({ message: `模板导入成功: ${autoQuotedCount}个产品自动报价, ${pendingPricingCount}个产品待核价`, created, serial_number: baseSerial, ids: createdIds, auto_quoted: autoQuotedCount, pending_pricing: pendingPricingCount });
 });
 
 // ===== 批量创建询价单（一个询价单多款产品）- 必须在 /:id 之前 =====
-router.post('/batch-create', requirePerm('inquiry:create'), (req, res) => {
+router.post('/batch-create', requirePerm('inquiry:create'), async (req, res) => {
   const { customer_name, customer_code, customer_source, country_region, sales_person, delivery_date,
           quote_validity, remarks, products } = req.body;
 
@@ -2214,7 +2229,9 @@ router.post('/batch-create', requirePerm('inquiry:create'), (req, res) => {
   let autoQuotedCount = 0;
   let pendingPricingCount = 0;
 
-  products.forEach((prod, idx) => {
+  // for 循环而非 forEach：循环内要 await 表写（db 层写操作异步，forEach 回调内无法 await）
+  for (let idx = 0; idx < products.length; idx++) {
+    const prod = products[idx];
     const serialNumber = idx === 0 ? baseSerial : baseSerial + '-' + String(idx + 1).padStart(2, '0');
 
     let hasQuotePrice = false;
@@ -2307,7 +2324,8 @@ router.post('/batch-create', requirePerm('inquiry:create'), (req, res) => {
       final_price: initialFinalPrice, quoted_at: hasQuotePrice ? now() : null, follow_up_records: '', lost_reason: '',
       created_at: now(), updated_at: now()
     };
-    const result = table.insert(record);
+    // await 到写落定：否则 result.lastID 为 undefined，且紧随的出站钩子读不到该行
+    const result = await table.insert(record);
     createdIds.push(result.lastID);
     created++;
 
@@ -2326,9 +2344,9 @@ router.post('/batch-create', requirePerm('inquiry:create'), (req, res) => {
           pricing_data: JSON.stringify({ pricing_id: null, bom_costs: {}, total_cost: initialMaterialCost, price_rmb: initialFinalPrice, price_usd: quoteSource ? quoteSource.price_usd : null, min_price: initialBaseCost, pricing_version: 'V1.0', effective_date: now().substring(0, 10) }),
           status: 'auto_generated', created_at: now(), updated_at: now()
         };
-        configTable.insert(newConfig);
+        await configTable.insert(newConfig);
       }
-      quotationTable.insert({
+      await quotationTable.insert({
         quote_no: genQuoteNo(), inquiry_id: result.lastID, inquiry_no: serialNumber,
         customer_name, customer_source: customer_source || '', country_region: country_region || '', sales_person: sales_person || '',
         external_model: prod.external_model, internal_model: prod.internal_model || '',
@@ -2354,7 +2372,7 @@ router.post('/batch-create', requirePerm('inquiry:create'), (req, res) => {
         }
         const existingPricing = pricingTable.all().find(b => b.model === externalModel && b.inquiry_no === serialNumber);
         if (!existingPricing) {
-          pricingTable.insert({
+          await pricingTable.insert({
             customer: customer_name, inquiry_no: serialNumber, model: externalModel,
             product_name: prod.product_name || (product ? product.product_name : '') || '',
             power: prod.power || (product ? product.power : '') || '',
@@ -2377,13 +2395,13 @@ router.post('/batch-create', requirePerm('inquiry:create'), (req, res) => {
 
     const exists = custTable.all().find(c => c.name === customer_name);
     if (exists && exists.customer_code) {
-      table.update(result.lastID, { customer_code: exists.customer_code });
+      await table.update(result.lastID, { customer_code: exists.customer_code });
     }
-  });
+  }
 
   const exists = custTable.all().find(c => c.name === customer_name);
   if (!exists) {
-    custTable.insert({
+    await custTable.insert({
       name: customer_name, source: customer_source || '线上', customer_source: customer_source || '线上', country_region: country_region || '',
       contact: req.body.contact_person || '',
       phone: req.body.contact_phone || '',
@@ -2403,15 +2421,17 @@ router.post('/batch-create', requirePerm('inquiry:create'), (req, res) => {
     if (req.body.contact_person && !exists.contact && !exists.contact_person) custUpdates.contact = req.body.contact_person;
     if (req.body.contact_phone && !exists.phone) custUpdates.phone = req.body.contact_phone;
     if (req.body.contact_email && !exists.email) custUpdates.email = req.body.contact_email;
-    custTable.update(exists.id, custUpdates);
+    await custTable.update(exists.id, custUpdates);
   }
 
+  // 出站必须在全部行写落定后：钩子按基号读 inquiries 聚合，未落定的行读不到
+  aeos.fireUpsert('Inquiry', baseSerial);
   logOperation('批量创建询价', sales_person || 'system', `询价单 ${baseSerial} 共 ${created} 个产品 (自动报价:${autoQuotedCount}, 待核价:${pendingPricingCount})`, null);
   res.json({ message: `批量创建成功: ${autoQuotedCount}个产品自动报价, ${pendingPricingCount}个产品待核价`, created, serial_number: baseSerial, ids: createdIds, auto_quoted: autoQuotedCount, pending_pricing: pendingPricingCount });
 });
 
 // 创建询价单
-router.post('/', requirePerm('inquiry:create'), (req, res) => {
+router.post('/', requirePerm('inquiry:create'), async (req, res) => {
   const { customer_name, customer_code, customer_source, country_region, sales_person, delivery_date,
           internal_model, product_category, power, configuration, quantity,
           custom_requirements, special_process, remarks, quote_validity,
@@ -2667,13 +2687,14 @@ router.post('/', requirePerm('inquiry:create'), (req, res) => {
       if (!record.product_category && prodInfo.category) record.product_category = prodInfo.category;
     }
   }
-  const result = table.insert(record);
+  // await 到写落定：否则 result.lastID 为 undefined，且紧随的出站钩子读不到该行
+  const result = await table.insert(record);
 
   // 自动创建或更新产品
   if (external_model) {
     if (isVariant) {
       const baseProduct = prodTable.all().find(p => p.external_model === variantBaseModel);
-      prodTable.insert({
+      await prodTable.insert({
         external_model,
         internal_model: internal_model || (baseProduct ? baseProduct.internal_model : '') || '',
         category: product_category || (baseProduct ? baseProduct.category : '') || '',
@@ -2916,27 +2937,28 @@ router.post('/', requirePerm('inquiry:create'), (req, res) => {
       if (contact_phone && !exists.phone) custUpdates.phone = contact_phone;
       if (contact_email && !exists.email) custUpdates.email = contact_email;
       if (exists.customer_code) {
-        table.update(result.lastID, { customer_code: exists.customer_code });
+        await table.update(result.lastID, { customer_code: exists.customer_code });
       } else if (customer_code) {
         custUpdates.customer_code = customer_code;
       }
-      custTable.update(exists.id, custUpdates);
+      await custTable.update(exists.id, custUpdates);
     }
   }
 
   if (external_model && product_category) {
     const product = prodTable.all().find(p => p.external_model === external_model);
     if (product && (!product.category || product.category === '')) {
-      prodTable.update(product.id, { category: product_category, updated_at: now() });
+      await prodTable.update(product.id, { category: product_category, updated_at: now() });
     }
   }
 
   const created = table.findById(result.lastID);
+  aeos.fireUpsert('Inquiry', created ? created.serial_number : record.serial_number);
   res.json({ message: statusReason, data: created, auto_quoted: initialStatus === 'quoted', applied_rules: appliedRules });
 });
 
 // 更新询价单
-router.put('/:id', requirePerm('inquiry:edit'), (req, res) => {
+router.put('/:id', requirePerm('inquiry:edit'), async (req, res) => {
   const table = getTable('inquiries');
   const existing = table.findById(req.params.id);
   if (!existing) return res.status(404).json({ error: '询价单不存在' });
@@ -2983,20 +3005,20 @@ router.put('/:id', requirePerm('inquiry:edit'), (req, res) => {
     const custTable = getTable('customers');
     const exists = custTable.all().find(c => c.name === req.body.customer_name);
     if (!exists) {
-      custTable.insert({ name: req.body.customer_name, source: req.body.customer_source || '线上', country_region: req.body.country_region || '', contact: '', phone: '', email: '', created_at: now(), updated_at: now() });
+      await custTable.insert({ name: req.body.customer_name, source: req.body.customer_source || '线上', country_region: req.body.country_region || '', contact: '', phone: '', email: '', created_at: now(), updated_at: now() });
     } else {
       if (req.body.customer_source && (!exists.source || exists.source === '线上')) {
-        custTable.update(exists.id, { source: req.body.customer_source, updated_at: now() });
+        await custTable.update(exists.id, { source: req.body.customer_source, updated_at: now() });
       }
       if (req.body.country_region && !exists.country_region) {
-        custTable.update(exists.id, { country_region: req.body.country_region, updated_at: now() });
+        await custTable.update(exists.id, { country_region: req.body.country_region, updated_at: now() });
       }
       if (exists.customer_code) {
         fields.customer_code = exists.customer_code;
       }
     }
   }
-  table.update(req.params.id, fields);
+  await table.update(req.params.id, fields);
 
   // 同步变更到关联的核价记录
   const bomTable = getTable('bom_pricing');
@@ -3035,33 +3057,36 @@ router.put('/:id', requirePerm('inquiry:edit'), (req, res) => {
     });
     if (Object.keys(syncFields).length > 0) {
       syncFields.updated_at = now();
-      linkedPricings.forEach(bp => {
-        bomTable.update(bp.id, syncFields);
-      });
+      for (const bp of linkedPricings) {
+        await bomTable.update(bp.id, syncFields);
+      }
     }
   }
 
+  aeos.fireUpsert('Inquiry', existing.serial_number);
   logOperation('更新询价', req.body.operator || 'system', `更新询价单 ${existing.serial_number}`, Number(req.params.id));
   res.json({ message: '询价单更新成功', data: table.findById(req.params.id) });
 });
 
 // 删除询价单
-router.delete('/:id', requirePerm('inquiry:delete'), (req, res) => {
+router.delete('/:id', requirePerm('inquiry:delete'), async (req, res) => {
   const table = getTable('inquiries');
   const existing = table.findById(req.params.id);
   if (!existing) return res.status(404).json({ error: '询价单不存在' });
 
   const bomTable = getTable('bom_pricing');
   const orphans = bomTable.all().filter(b => b.inquiry_no === existing.serial_number);
-  orphans.forEach(b => { bomTable.update(b.id, { inquiry_no: '/', updated_at: now() }); });
+  for (const b of orphans) { await bomTable.update(b.id, { inquiry_no: '/', updated_at: now() }); }
 
-  table.delete(req.params.id);
+  // 先 await 删除落定，出站钩子才读得到「已删除」这一事实：基号下仍有行 → UPSERT，无行 → DELETE
+  await table.delete(req.params.id);
+  aeos.fireDelete('Inquiry', existing);
   logOperation('删除询价', req.query.operator || 'system', `删除询价单 ${existing.serial_number}${orphans.length > 0 ? '，清理关联核价记录' + orphans.length + '条' : ''}`, Number(req.params.id));
   res.json({ message: '询价单删除成功' });
 });
 
 // ===== 智能核价（增强版：基于BOM表分项成本+核价库）=====
-router.post('/:id/price', requirePerm('inquiry:price'), (req, res) => {
+router.post('/:id/price', requirePerm('inquiry:price'), async (req, res) => {
   const { profit_rate, discount_rate, operator } = req.body;
   const table = getTable('inquiries');
   const inquiry = table.findById(req.params.id);
@@ -3140,16 +3165,18 @@ router.post('/:id/price', requirePerm('inquiry:price'), (req, res) => {
   const dRate = discount_rate !== undefined ? discount_rate : 1;
   const final_price = Math.round(base_cost * (1 + pRate) * dRate * 100) / 100;
 
-  table.update(req.params.id, {
+  // await 到写落定：出站报文与随后的报价单快照都要取到核价后的值（未 await 会取到改前值）
+  await table.update(req.params.id, {
     material_cost, process_cost, accessory_cost, estimated_loss,
     base_cost, profit_rate: pRate, discount_rate: dRate, final_price,
     status: 'quoted', quoted_at: now(),
     updated_at: now()
   });
+  aeos.fireUpsert('Inquiry', inquiry.serial_number);
 
   const quotationTable = getTable('quotations');
   const updatedInquiry = table.findById(req.params.id);
-  quotationTable.insert({
+  await quotationTable.insert({
     quote_no: genQuoteNo(),
     inquiry_id: Number(req.params.id),
     inquiry_no: updatedInquiry.serial_number,
@@ -3208,7 +3235,7 @@ router.post('/:id/price', requirePerm('inquiry:price'), (req, res) => {
 });
 
 // ===== 状态变更 =====
-router.put('/:id/status', requirePerm('inquiry:status'), (req, res) => {
+router.put('/:id/status', requirePerm('inquiry:status'), async (req, res) => {
   const { status, changed_by, reason, lost_reason } = req.body;
   const validStatuses = ['new', 'cert_configured', 'config_generated', 'pending_pricing', 'pending_quote', 'quoted', 'negotiating',
                          'sample', 'project', 'lost', 'closed'];
@@ -3243,7 +3270,8 @@ router.put('/:id/status', requirePerm('inquiry:status'), (req, res) => {
 
   const fields = { status, updated_at: now() };
   if (status === 'lost' && lost_reason) fields.lost_reason = lost_reason;
-  table.update(req.params.id, fields);
+  await table.update(req.params.id, fields);
+  aeos.fireUpsert('Inquiry', inquiry.serial_number);
 
   const statusTable = getTable('inquiry_status_changes');
   statusTable.insert({ inquiry_id: Number(req.params.id), status, changed_by: changed_by || 'system', changed_at: now(), reason: reason || '状态变更' });
@@ -3441,7 +3469,7 @@ router.put('/:id/config-sheet', requirePerm('inquiry:edit'), (req, res) => {
 });
 
 // ===== 折扣审批 =====
-router.post('/:id/discount-approval', requirePerm('inquiry:edit'), (req, res) => {
+router.post('/:id/discount-approval', requirePerm('inquiry:edit'), async (req, res) => {
   const { discount_rate, reason, applicant, approver, action } = req.body;
   const table = getTable('inquiries');
   const inquiry = table.findById(req.params.id);
@@ -3464,18 +3492,19 @@ router.post('/:id/discount-approval', requirePerm('inquiry:edit'), (req, res) =>
     }
 
     if (approvalLevel === 'none') {
-      table.update(req.params.id, {
+      await table.update(req.params.id, {
         discount_rate: d,
         final_price: Math.round((inquiry.base_cost || 0) * (1 + (inquiry.profit_rate || 0)) * d * 100) / 100,
         updated_at: now()
       });
+      aeos.fireUpsert('Inquiry', inquiry.serial_number);
       const quotationTable = getTable('quotations');
       const quotations = quotationTable.all().filter(q => q.inquiry_id === Number(req.params.id));
       if (quotations.length > 0) {
         const latestQuote = quotations[quotations.length - 1];
         const newFinalPrice = Math.round((inquiry.base_cost || 0) * (1 + (inquiry.profit_rate || 0)) * d * 100) / 100;
         const unitPrice = latestQuote.quantity > 0 ? Math.round(newFinalPrice / latestQuote.quantity * 100) / 100 : newFinalPrice;
-        quotationTable.update(latestQuote.id, {
+        await quotationTable.update(latestQuote.id, {
           discount_rate: d,
           final_price: newFinalPrice,
           unit_price: unitPrice,
@@ -3516,7 +3545,7 @@ router.post('/:id/discount-approval', requirePerm('inquiry:edit'), (req, res) =>
       return res.status(400).json({ error: '无待审批的折扣申请' });
     }
     const latest = pendingApprovals[pendingApprovals.length - 1];
-    approvalTable.update(latest.id, {
+    await approvalTable.update(latest.id, {
       status: action === 'approve' ? 'approved' : 'rejected',
       approver: approver || '',
       approved_at: now(),
@@ -3524,17 +3553,18 @@ router.post('/:id/discount-approval', requirePerm('inquiry:edit'), (req, res) =>
     });
 
     if (action === 'approve') {
-      table.update(req.params.id, {
+      await table.update(req.params.id, {
         discount_rate: latest.discount_rate,
         final_price: latest.discounted_price,
         updated_at: now()
       });
+      aeos.fireUpsert('Inquiry', inquiry.serial_number);
       const quotationTable = getTable('quotations');
       const quotations = quotationTable.all().filter(q => q.inquiry_id === Number(req.params.id));
       if (quotations.length > 0) {
         const latestQuote = quotations[quotations.length - 1];
         const unitPrice = latestQuote.quantity > 0 ? Math.round(latest.discounted_price / latestQuote.quantity * 100) / 100 : latest.discounted_price;
-        quotationTable.update(latestQuote.id, {
+        await quotationTable.update(latestQuote.id, {
           discount_rate: latest.discount_rate,
           final_price: latest.discounted_price,
           unit_price: unitPrice,

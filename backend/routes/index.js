@@ -54,4 +54,7 @@ router.use('/order-check', require('./order-check'));
 router.use('/sop', require('./sop'));
 router.use('/im', require('./im'));
 
+// AEOS 销售数据同步通道（EBMS↔CRM 双向同步端点，契约见 contracts/aeos-contracts-v1.schema.json）
+router.use('/aeos', require('./aeos'));
+
 module.exports = router;

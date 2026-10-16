@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getTable, ensureTable, now } = require('../db');
 const { requirePerm } = require('../auth-middleware');
+const aeos = require('../lib/aeos-hooks');
 
 ensureTable('quote_library');
 ensureTable('sync_logs');
@@ -78,7 +79,7 @@ router.post('/', requirePerm('quote:manage'), async (req, res) => {
     });
   }
 
-  const result = table.insert({
+  const result = await table.insert({
     external_model: external_model || '',
     internal_model: internal_model || '',
     product_name: product_name || '',
@@ -100,6 +101,7 @@ router.post('/', requirePerm('quote:manage'), async (req, res) => {
   });
   
   const created = table.findById(result.lastID);
+  aeos.fireUpsert('QuoteLibrary', created);
   res.json({ message: '报价库记录创建成功', data: created });
 });
 
@@ -131,17 +133,19 @@ router.put('/:id', requirePerm('quote:manage'), async (req, res) => {
   updates.unit_price = priceRmb;
   updates.updated_at = now();
 
-  table.update(req.params.id, updates);
+  await table.update(req.params.id, updates);
+  aeos.fireUpsert('QuoteLibrary', table.findById(req.params.id));   // 写落定后再取行
   res.json({ message: '报价库记录更新成功', data: table.findById(req.params.id) });
 });
 
 // ===== 删除报价库记录 =====
-router.delete('/:id', requirePerm('quote:delete'), (req, res) => {
+router.delete('/:id', requirePerm('quote:delete'), async (req, res) => {
   const table = getTable('quote_library');
   const existing = table.findById(req.params.id);
   if (!existing) return res.status(404).json({ error: '报价记录不存在' });
-  
-  table.delete(req.params.id);
+
+  await table.delete(req.params.id);
+  aeos.fireDelete('QuoteLibrary', existing);
   res.json({ message: '报价库记录删除成功' });
 });
 
@@ -189,7 +193,7 @@ router.post('/from-inquiry/:inquiry_id', requirePerm('quote:manage'), async (req
   const rate = await getExchangeRate();
   const unitPriceUsd = unitPriceRmb ? Math.round(unitPriceRmb / rate * 10000) / 10000 : null;
 
-  const result = table.insert({
+  const result = await table.insert({
     external_model: inquiry.external_model || '',
     internal_model: inquiry.internal_model || '',
     product_name: inquiry.product_name || (product ? product.product_name : '') || '',
@@ -213,15 +217,16 @@ router.post('/from-inquiry/:inquiry_id', requirePerm('quote:manage'), async (req
   });
   
   const created = table.findById(result.lastID);
-  
+
   // 标记询价单已转入报价库
-  inquiryTable.update(req.params.inquiry_id, { quote_library_id: result.lastID, updated_at: now() });
-  
+  await inquiryTable.update(req.params.inquiry_id, { quote_library_id: result.lastID, updated_at: now() });
+
+  aeos.fireUpsert('QuoteLibrary', created);
   res.json({ message: '报价已转入报价库', data: created });
 });
 
 // ===== 快速申请报价（从报价库获取）=====
-router.post('/apply', requirePerm('quote:manage'), (req, res) => {
+router.post('/apply', requirePerm('quote:manage'), async (req, res) => {
   const { inquiry_id, quote_library_id } = req.body;
   
   if (!inquiry_id || !quote_library_id) {
@@ -272,17 +277,20 @@ router.post('/apply', requirePerm('quote:manage'), (req, res) => {
     if (prodInfo.power && !inquiry.power) updates.power = prodInfo.power;
   }
   
-  inquiryTable.update(inquiry_id, updates);
-  
-  libraryTable.update(quote_library_id, { 
+  await inquiryTable.update(inquiry_id, updates);
+
+  await libraryTable.update(quote_library_id, {
     usage_count: (quote.usage_count || 0) + 1,
     updated_at: now()
   });
-  
-  res.json({ 
-    message: '报价申请成功，已从报价库获取报价和产品参数', 
+
+  // 出站必须在两侧写落定后再取行
+  aeos.fireUpsert('Inquiry', inquiryTable.findById(inquiry_id));
+  aeos.fireUpsert('QuoteLibrary', libraryTable.findById(quote_library_id));
+  res.json({
+    message: '报价申请成功，已从报价库获取报价和产品参数',
     data: inquiryTable.findById(inquiry_id),
-    quote_source: quote 
+    quote_source: quote
   });
 });
 
@@ -316,7 +324,7 @@ router.get('/available/:model', requirePerm('quote:view'), (req, res) => {
 });
 
 // ===== 核价库→报价库 同步 =====
-function syncPricingToQuote() {
+async function syncPricingToQuote() {
   const pricingTable = getTable('bom_pricing');
   const quoteTable = getTable('quote_library');
   const logTable = getTable('sync_logs');
@@ -329,9 +337,9 @@ function syncPricingToQuote() {
   const details = [];
   const r2 = v => v != null ? Math.round(parseFloat(v) * 100) / 100 : null;
 
-  allPricing.forEach(pricing => {
-    if (!pricing.model) { skipped++; return; }
-    if (!pricing.price_rmb && !pricing.price_usd && !pricing.min_price) { skipped++; return; }
+  for (const pricing of allPricing) {
+    if (!pricing.model) { skipped++; continue; }
+    if (!pricing.price_rmb && !pricing.price_usd && !pricing.min_price) { skipped++; continue; }
 
     const existing = allQuotes.find(q =>
       q.external_model === pricing.model &&
@@ -358,13 +366,13 @@ function syncPricingToQuote() {
             if (pricing.remarks) updates.specs = pricing.remarks;
             updates.source_pricing_id = pricing.id;
             updates.source_inquiry_no = pricing.inquiry_no || '';
-            quoteTable.update(sameEmpty.id, updates);
+            await quoteTable.update(sameEmpty.id, updates);
             updated++;
             details.push('更新(空证书): ' + pricing.model + ' RMB¥' + (pricing.price_rmb || '-'));
           } else {
             skipped++;
           }
-          return;
+          continue;
         }
       }
     }
@@ -410,7 +418,8 @@ function syncPricingToQuote() {
         if (pricing.remarks) updates.specs = pricing.remarks;
         updates.source_pricing_id = pricing.id;
         updates.source_inquiry_no = pricing.inquiry_no || '';
-        quoteTable.update(existing.id, updates);
+        await quoteTable.update(existing.id, updates);
+        aeos.fireUpsert('QuoteLibrary', quoteTable.findById(existing.id));
         updated++;
         details.push(`更新: ${pricing.model} RMB¥${pricing.price_rmb || '-'}`);
       } else {
@@ -419,11 +428,12 @@ function syncPricingToQuote() {
     } else {
       quoteData.created_at = pricing.created_at || now();
       quoteData.usage_count = 0;
-      quoteTable.insert(quoteData);
+      const ins = await quoteTable.insert(quoteData);
+      aeos.fireUpsert('QuoteLibrary', quoteTable.findById(ins.lastID));
       created++;
       details.push(`新增: ${pricing.model} RMB¥${pricing.price_rmb || '-'}`);
     }
-  });
+  }
 
   const summary = `核价→报价同步完成: 新增${created}条, 更新${updated}条, 跳过${skipped}条`;
   if (logTable) {
@@ -443,9 +453,9 @@ function syncPricingToQuote() {
 }
 
 // 手动触发同步
-router.post('/sync-from-pricing', requirePerm('quote:manage'), (req, res) => {
+router.post('/sync-from-pricing', requirePerm('quote:manage'), async (req, res) => {
   try {
-    const result = syncPricingToQuote();
+    const result = await syncPricingToQuote();
     res.json({ message: result.summary, ...result });
   } catch(e) {
     const logTable = getTable('sync_logs');
@@ -464,7 +474,7 @@ router.post('/sync-from-pricing', requirePerm('quote:manage'), (req, res) => {
 });
 
 // ===== 去重清理 =====
-router.post('/deduplicate', requirePerm('quote:manage'), (req, res) => {
+router.post('/deduplicate', requirePerm('quote:manage'), async (req, res) => {
   const table = getTable('quote_library');
   table._invalidate();
   const records = table.all();
@@ -488,7 +498,11 @@ router.post('/deduplicate', requirePerm('quote:manage'), (req, res) => {
     }
   });
 
-  toDelete.forEach(id => table.delete(id));
+  for (const id of toDelete) {
+    const row = table.findById(id);
+    await table.delete(id);
+    if (row) aeos.fireDelete('QuoteLibrary', row);
+  }
 
   res.json({
     message: `去重完成，删除${toDelete.length}条重复记录`,

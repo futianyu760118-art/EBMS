@@ -4,6 +4,7 @@ const { getTable, now } = require('../db');
 const { requirePerm } = require('../auth-middleware');
 const { resolveDataScope, isInScope } = require('../data-scope');
 const { resolveDataScopeV2, buildScopeFilter, combineFilter, logDataPermission } = require('../data-scope-v2');
+const aeos = require('../lib/aeos-hooks');
 
 // 状态变更锁定：人工改单后设置 user_status_locked=1，外部 API 同步不会覆盖这些状态
 const STATUS_VALID = ['open','confirmed','procurement_ready','material_ready','packaging_done','shipped','completed','closed','cancelled'];
@@ -127,7 +128,7 @@ router.get('/:id', requirePerm('order:view'), (req, res) => {
   res.json(row);
 });
 
-router.post('/', requirePerm('order:create'), (req, res) => {
+router.post('/', requirePerm('order:create'), async (req, res) => {
   const table = getTable('orders');
   const b = req.body;
   if (!b.order_no && !b.customer_name) return res.status(400).json({ error: '订单号或客户必填' });
@@ -140,7 +141,7 @@ router.post('/', requirePerm('order:create'), (req, res) => {
     const personnel = getTable('org_personnel').all().find(p => Number(p.linked_user_id) === Number(salesId));
     if (personnel && personnel.department_id) deptId = Number(personnel.department_id);
   }
-  const result = table.insert({
+  const result = await table.insert({
     order_no: b.order_no || '', line_no: b.line_no || '', customer_name: b.customer_name || '',
     customer_code: b.customer_code || '', product_code: b.product_code || '',
     product_name: b.product_name || '', project_no: b.project_no || '',
@@ -156,10 +157,11 @@ router.post('/', requirePerm('order:create'), (req, res) => {
     created_at: now(), updated_at: now()
   });
   logDataPermission(req, 'order.create', { table: 'orders', record_id: result.lastID, scope_mode: 'self' });
+  aeos.fireUpsert('Order', table.findById(result.lastID));
   res.json({ message: '创建成功', data: table.findById(result.lastID) });
 });
 
-router.put('/:id', requirePerm('order:edit'), (req, res) => {
+router.put('/:id', requirePerm('order:edit'), async (req, res) => {
   const table = getTable('orders');
   if (!table.findById(req.params.id)) return res.status(404).json({ error: '订单不存在' });
   const fields = { updated_at: now() };
@@ -169,35 +171,40 @@ router.put('/:id', requirePerm('order:edit'), (req, res) => {
   ['quantity','completed_qty','order_amount'].forEach(f => {
     if (req.body[f] !== undefined) fields[f] = Number(req.body[f]) || 0;
   });
-  table.update(req.params.id, fields);
+  await table.update(req.params.id, fields);
+  aeos.fireUpsert('Order', table.findById(req.params.id));   // 写落定后再取行
   res.json({ message: '更新成功' });
 });
 
-router.put('/:id/status', requirePerm('order:edit'), (req, res) => {
+router.put('/:id/status', requirePerm('order:edit'), async (req, res) => {
   const table = getTable('orders');
   if (!table.findById(req.params.id)) return res.status(404).json({ error: '不存在' });
   if (!STATUS_VALID.includes(req.body.status)) return res.status(400).json({ error: '无效状态' });
   const operator = req.body.user_id || req.headers['x-user-id'] || null;
-  table.update(req.params.id, STATUS_LOCK_FIELDS(req.body.status, operator));
+  await table.update(req.params.id, STATUS_LOCK_FIELDS(req.body.status, operator));
+  aeos.fireUpsert('Order', table.findById(req.params.id));
   res.json({ message: '状态更新', locked: true });
 });
 
-router.delete('/:id', requirePerm('order:delete'), (req, res) => {
+router.delete('/:id', requirePerm('order:delete'), async (req, res) => {
   const table = getTable('orders');
-  if (!table.findById(req.params.id)) return res.status(404).json({ error: '不存在' });
-  table.delete(req.params.id);
+  const row = table.findById(req.params.id);
+  if (!row) return res.status(404).json({ error: '不存在' });
+  await table.delete(req.params.id);
+  aeos.fireDelete('Order', row);
   res.json({ message: '删除成功' });
 });
 
-router.post('/batch-delete', requirePerm('order:delete'), (req, res) => {
+router.post('/batch-delete', requirePerm('order:delete'), async (req, res) => {
   const { ids } = req.body;
   if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: '请提供要删除的ID列表' });
   const table = getTable('orders');
   let ok = 0, fail = 0;
-  ids.forEach(id => {
-    if (table.findById(id)) { table.delete(id); ok++; }
+  for (const id of ids) {
+    const row = table.findById(id);
+    if (row) { await table.delete(id); aeos.fireDelete('Order', row); ok++; }
     else { fail++; }
-  });
+  }
   res.json({ message: `批量删除完成：成功 ${ok} 条，失败 ${fail} 条`, ok, fail });
 });
 
@@ -218,36 +225,38 @@ router.get('/by-key/:order_no/:line_no', requirePerm('order:view'), (req, res) =
   res.json(o);
 });
 
-router.put('/by-key/:order_no/:line_no/status', requirePerm('order:edit'), (req, res) => {
+router.put('/by-key/:order_no/:line_no/status', requirePerm('order:edit'), async (req, res) => {
   const o = findByKey(req.params.order_no, req.params.line_no);
   if (!o) return res.status(404).json({ error: '本地未同步该订单，请先点同步订单' });
   if (!STATUS_VALID.includes(req.body.status)) return res.status(400).json({ error: '无效状态' });
   const operator = req.body.user_id || req.headers['x-user-id'] || null;
   const table = getTable('orders');
-  table.update(o.id, STATUS_LOCK_FIELDS(req.body.status, operator));
+  await table.update(o.id, STATUS_LOCK_FIELDS(req.body.status, operator));
+  aeos.fireUpsert('Order', table.findById(o.id));
   res.json({ message: '状态更新', id: o.id, status: req.body.status, locked: true });
 });
 
 // 批量状态变更：body = { items: [{order_no, line_no}, ...], status, user_id }
 // 命中即标记 user_status_locked=1，未命中的写入 missing
-router.post('/by-key/batch-status', requirePerm('order:edit'), (req, res) => {
+router.post('/by-key/batch-status', requirePerm('order:edit'), async (req, res) => {
   const { items, status } = req.body || {};
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: '请提供 items 数组（每项含 order_no, line_no）' });
   if (!STATUS_VALID.includes(status)) return res.status(400).json({ error: '无效状态' });
   const table = getTable('orders');
   const operator = req.body.user_id || req.headers['x-user-id'] || null;
   let ok = 0, fail = 0, missing = [], noChange = [];
-  items.forEach(it => {
+  for (const it of items) {
     const o = findByKey(it.order_no, it.line_no);
-    if (!o) { fail++; missing.push({ order_no: it.order_no, line_no: it.line_no }); return; }
-    if (o.status === status) { noChange.push({ order_no: it.order_no, line_no: it.line_no, id: o.id }); return; }
-    table.update(o.id, STATUS_LOCK_FIELDS(status, operator));
+    if (!o) { fail++; missing.push({ order_no: it.order_no, line_no: it.line_no }); continue; }
+    if (o.status === status) { noChange.push({ order_no: it.order_no, line_no: it.line_no, id: o.id }); continue; }
+    await table.update(o.id, STATUS_LOCK_FIELDS(status, operator));
+    aeos.fireUpsert('Order', table.findById(o.id));
     ok++;
-  });
+  }
   res.json({ message: `批量状态完成：成功 ${ok} 条，失败 ${fail} 条，未变 ${noChange.length} 条`, ok, fail, missing, no_change: noChange });
 });
 
-router.put('/by-key/:order_no/:line_no', requirePerm('order:edit'), (req, res) => {
+router.put('/by-key/:order_no/:line_no', requirePerm('order:edit'), async (req, res) => {
   const o = findByKey(req.params.order_no, req.params.line_no);
   if (!o) return res.status(404).json({ error: '本地未同步该订单，请先点同步订单' });
   const table = getTable('orders');
@@ -258,28 +267,30 @@ router.put('/by-key/:order_no/:line_no', requirePerm('order:edit'), (req, res) =
   ['quantity','completed_qty','order_amount'].forEach(f => {
     if (req.body[f] !== undefined) fields[f] = Number(req.body[f]) || 0;
   });
-  table.update(o.id, fields);
+  await table.update(o.id, fields);
+  aeos.fireUpsert('Order', table.findById(o.id));
   res.json({ message: '更新成功', id: o.id });
 });
 
-router.delete('/by-key/:order_no/:line_no', requirePerm('order:delete'), (req, res) => {
+router.delete('/by-key/:order_no/:line_no', requirePerm('order:delete'), async (req, res) => {
   const o = findByKey(req.params.order_no, req.params.line_no);
   if (!o) return res.status(404).json({ error: '本地未同步该订单，请先点同步订单' });
   const table = getTable('orders');
-  table.delete(o.id);
+  await table.delete(o.id);
+  aeos.fireDelete('Order', o);
   res.json({ message: '删除成功' });
 });
 
-router.post('/batch-delete-by-key', requirePerm('order:delete'), (req, res) => {
+router.post('/batch-delete-by-key', requirePerm('order:delete'), async (req, res) => {
   const { items } = req.body || {};
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: '请提供 items 数组（每项含 order_no, line_no）' });
   const table = getTable('orders');
   let ok = 0, fail = 0, missing = [];
-  items.forEach(it => {
+  for (const it of items) {
     const o = findByKey(it.order_no, it.line_no);
-    if (o) { table.delete(o.id); ok++; }
+    if (o) { await table.delete(o.id); aeos.fireDelete('Order', o); ok++; }
     else { fail++; missing.push({ order_no: it.order_no, line_no: it.line_no }); }
-  });
+  }
   res.json({ message: `批量删除完成：成功 ${ok} 条，失败 ${fail} 条`, ok, fail, missing });
 });
 

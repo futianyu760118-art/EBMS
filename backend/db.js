@@ -1,7 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const dataDir = path.join(__dirname, '../database');
+// EBMS_DATA_DIR 允许把数据目录指到别处（自检/演练用隔离库，避免污染生产 sales.db）。
+const dataDir = process.env.EBMS_DATA_DIR
+  ? path.resolve(process.env.EBMS_DATA_DIR)
+  : path.join(__dirname, '../database');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
@@ -630,4 +633,8 @@ function now() {
   return d.toISOString().replace('T', ' ').substring(0, 19);
 }
 
-module.exports = { getTable, ensureTable, now, engine: ENGINE };
+// withTableLock 对外导出：写操作本身是异步的（经 FIFO 锁串行），需要「读-判断-写」
+// 原子成段的调用方（如 AEOS 出站入队判重、入站幂等判重）必须把整段放进同一把锁内，
+// 否则两次并发调用会各自读到「尚无记录」而重复写入。
+// 注意：锁名与表名同名时不可嵌套（内层会等外层释放而死锁），复合操作用独立锁名。
+module.exports = { getTable, ensureTable, now, withTableLock, engine: ENGINE };

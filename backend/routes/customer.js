@@ -9,6 +9,7 @@ const { getTable, now } = require('../db');
 const { requirePerm } = require('../auth-middleware');
 const { resolveDataScope, isInScope } = require('../data-scope');
 const { resolveDataScopeV2, buildScopeFilter, combineFilter, logDataPermission } = require('../data-scope-v2');
+const aeos = require('../lib/aeos-hooks');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -274,7 +275,7 @@ router.get('/template/download', requirePerm('customer:view'), (req, res) => {
 });
 
 // ===== 批量更新客户 - 必须在 /:id 之前 =====
-router.put('/batch-update', requirePerm('customer:edit'), (req, res) => {
+router.put('/batch-update', requirePerm('customer:edit'), async (req, res) => {
   const { ids, fields } = req.body;
   if (!ids || !Array.isArray(ids) || ids.length === 0) {
     return res.status(400).json({ error: '请选择要修改的客户' });
@@ -290,13 +291,15 @@ router.put('/batch-update', requirePerm('customer:edit'), (req, res) => {
   });
 
   let updated = 0;
-  ids.forEach(id => {
+  for (const id of ids) {
     const existing = table.findById(id);
     if (existing) {
-      table.update(id, updateFields);
+      await table.update(id, updateFields);
+      // 出站必须在写落定后再取行（表写异步；否则出站报文带改前值）
+      aeos.fireUpsert('Customer', table.findById(id));
       updated++;
     }
-  });
+  }
 
   const broadcast = req.app.get('broadcastDataChange');
   if (broadcast) broadcast('customers', 'batch_update', { ids, fields: updateFields, count: updated });
@@ -1014,7 +1017,7 @@ function cleanPhone(str) {
 }
 
 // ===== 批量删除客户 - 必须在 /:id 之前 =====
-router.post('/batch-delete', requirePerm('customer:delete'), (req, res) => {
+router.post('/batch-delete', requirePerm('customer:delete'), async (req, res) => {
   const { ids } = req.body;
   if (!ids || !Array.isArray(ids) || ids.length === 0) {
     return res.status(400).json({ error: '请选择要删除的客户' });
@@ -1022,13 +1025,14 @@ router.post('/batch-delete', requirePerm('customer:delete'), (req, res) => {
 
   const table = getTable('customers');
   let deleted = 0;
-  ids.forEach(id => {
+  for (const id of ids) {
     const existing = table.findById(id);
     if (existing) {
-      table.delete(id);
+      await table.delete(id);
+      aeos.fireDelete('Customer', existing);
       deleted++;
     }
-  });
+  }
 
   res.json({ message: `批量删除完成，成功 ${deleted} 条`, deleted });
 });
@@ -1113,6 +1117,7 @@ router.post('/', requirePerm('customer:create'), async (req, res) => {
   // 通知所有PC端客户端数据变更
   const broadcast = req.app.get('broadcastDataChange');
   if (broadcast) broadcast('customers', 'create', created);
+  aeos.fireUpsert('Customer', created);
 
   res.json({ message: '客户创建成功', data: created });
 });
@@ -1422,7 +1427,7 @@ router.get('/:id', requirePerm('customer:view'), (req, res) => {
 });
 
 // 更新客户
-router.put('/:id', requirePerm('customer:edit'), (req, res) => {
+router.put('/:id', requirePerm('customer:edit'), async (req, res) => {
   const table = getTable('customers');
   const existing = table.findById(req.params.id);
   if (!existing) return res.status(404).json({ error: '客户不存在' });
@@ -1431,20 +1436,24 @@ router.put('/:id', requirePerm('customer:edit'), (req, res) => {
   CUSTOMER_FIELDS.forEach(f => {
     if (req.body[f] !== undefined) fields[f] = req.body[f];
   });
-  table.update(req.params.id, fields);
+  await table.update(req.params.id, fields);
+  // 出站必须在写落定后再取行（表写异步；否则出站报文带改前值）
   const updated = table.findById(req.params.id);
   const broadcast = req.app.get('broadcastDataChange');
   if (broadcast) broadcast('customers', 'update', updated);
+  aeos.fireUpsert('Customer', updated);
   res.json({ message: '客户更新成功' });
 });
 
 // 删除客户
-router.delete('/:id', requirePerm('customer:delete'), (req, res) => {
+router.delete('/:id', requirePerm('customer:delete'), async (req, res) => {
   const table = getTable('customers');
-  const result = table.delete(req.params.id);
+  const row = table.findById(req.params.id);
+  const result = await table.delete(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: '客户不存在' });
   const broadcast = req.app.get('broadcastDataChange');
   if (broadcast) broadcast('customers', 'delete', { id: parseInt(req.params.id) });
+  aeos.fireDelete('Customer', row);
   res.json({ message: '客户删除成功' });
 });
 

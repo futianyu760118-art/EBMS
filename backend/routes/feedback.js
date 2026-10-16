@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getTable, ensureTable, now } = require('../db');
 const { requirePerm, getUserPermissions, extractUserId } = require('../auth-middleware');
+const aeos = require('../lib/aeos-hooks');
 
 ensureTable('feedback');
 ensureTable('feedback_followups');
@@ -228,6 +229,7 @@ router.post('/:id/followups', requirePerm('feedback:create'), async (req, res) =
 
   if (Object.keys(updates).length > 1) await table.update(row.id, updates);
 
+  aeos.fireUpsert('Feedback', table.findById(row.id));   // 跟进内嵌出站（§4.1）
   res.json({ message: '跟进已记录', data: fu, feedback: table.findById(row.id) });
 });
 
@@ -268,6 +270,7 @@ router.post('/', requirePerm('feedback:create'), async (req, res) => {
     assignee: created.assignee || '',
     operator: { id: operator.id || null, name: submitterName }
   });
+  aeos.fireUpsert('Feedback', table.findById(created.id));
   res.json({ message: '反馈提交成功', data: created });
 });
 
@@ -311,6 +314,7 @@ router.put('/:id', requirePerm('feedback:handle'), async (req, res) => {
     });
   }
 
+  aeos.fireUpsert('Feedback', table.findById(req.params.id));
   res.json({ message: '反馈更新成功', data: table.findById(req.params.id) });
 });
 
@@ -325,6 +329,7 @@ router.delete('/:id', requirePerm('feedback:delete'), async (req, res) => {
     await fu.deleteWhereNoSave(r => Number(r.feedback_id) === Number(req.params.id));
     await fu.saveNow();
   } catch (_) {}
+  aeos.fireDelete('Feedback', existing);
   res.json({ message: '反馈删除成功' });
 });
 
