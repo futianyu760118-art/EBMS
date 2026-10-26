@@ -16,8 +16,11 @@
 
 ```bash
 node scripts/aeos-revoke-pricing.js --out database/backups/inquiry-price-rollback.json
+# 必须重启服务后生效：权限表常驻进程内存，脚本直改库后热进程仍按旧权限放行
+docker restart ebms
 # 回滚
 node scripts/aeos-revoke-pricing.js --restore database/backups/inquiry-price-rollback.json
+docker restart ebms
 ```
 
 ## 2. 出站自动调度
