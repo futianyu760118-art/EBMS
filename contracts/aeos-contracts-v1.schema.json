@@ -76,8 +76,8 @@
       "enum": ["国标", "行标", "企标", "无证书"]
     },
     "quote_library_certificate_level": {
-      "description": "报价库证书等级字典（与询价字典不重叠）。",
-      "enum": ["CE", "ROHS", "CCC", "UL", "ETL"]
+      "description": "报价库证书等级取值域：认证类型（CE/ROHS/CCC/UL/ETL）与中国标准等级并集（PAND-309 R1）。",
+      "enum": ["CE", "ROHS", "CCC", "UL", "ETL", "国标", "行标", "企标", "无证书"]
     },
     "order_status": {
       "description": "订单状态机（9 值，冻结）。",

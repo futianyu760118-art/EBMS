@@ -17,6 +17,19 @@ services:
       - EBMS_APP_KEY=${EBMS_APP_KEY}
       - EBMS_APP_SECRET=${EBMS_APP_SECRET}
       - EBMS_EXTERNAL_API_KEY=${EBMS_EXTERNAL_API_KEY}
+      # ---- AEOS 双向同步（PAND-307 切流 / PAND-309 R4 持久化）----
+      # 入站：CRM 调 EBMS /api/aeos/ingest 时校验的令牌
+      - EBMS_INGEST_TOKEN=${EBMS_INGEST_TOKEN}
+      # 出站：EBMS 调 CRM /api/v1/integrations/ebms/ingest 时使用的令牌与地址
+      - EBMS_INBOUND_TOKEN=${EBMS_INBOUND_TOKEN}
+      - EBMS_CRM_INGEST_URL=${EBMS_CRM_INGEST_URL:-http://host.docker.internal:8000/api/v1/integrations/ebms/ingest}
+      # 出站自动调度：默认每 5 分钟 flush；EBMS_AEOS_AUTOSYNC=0 可关闭
+      - EBMS_AEOS_AUTOSYNC=${EBMS_AEOS_AUTOSYNC:-1}
+      - EBMS_AEOS_FLUSH_INTERVAL_MS=${EBMS_AEOS_FLUSH_INTERVAL_MS:-300000}
+      # 切流后核价→报价库自动同步默认停用（CRM 主写）；仅回滚演练置 1
+      - EBMS_QUOTE_AUTOSYNC=${EBMS_QUOTE_AUTOSYNC:-0}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # always：无论退出码如何都自动拉起，避免进程消失后页面长期打不开
     restart: always
     # 给 Node 收尾/落盘留出时间，避免 SIGKILL 导致 SQLite 处于未 checkpoint 状态

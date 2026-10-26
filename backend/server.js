@@ -361,6 +361,9 @@ server.listen(PORT, '0.0.0.0', () => {
   // 同步 13MB materials.json / 80MB issues.json 时阻塞事件循环，导致前端页面卡顿
   // 在 13MB 异步写盘机制未彻底解决前，默认禁用；启用方法：环境变量 ENABLE_PERIODIC_TASKS=1
   if (process.env.ENABLE_PERIODIC_TASKS === '1') {
+  // PAND-309 R3：切流后 CRM 是报价库唯一写侧，EBMS「核价→报价库」自动同步必须停止。
+  // 默认关闭；仅回滚演练时显式 EBMS_QUOTE_AUTOSYNC=1 才恢复。
+  if (process.env.EBMS_QUOTE_AUTOSYNC === '1') {
   // 定时同步：核价库→报价库，每5分钟执行一次
   const { syncPricingToQuote } = require('./routes/quote');
   const SYNC_INTERVAL = 5 * 60 * 1000;
@@ -383,6 +386,9 @@ server.listen(PORT, '0.0.0.0', () => {
   }, 30000);
 
   logger.info(`定时同步: 核价库→报价库 每5分钟自动同步`);
+  } else {
+    logger.info('[定时同步] 核价→报价库 已停用（切流后 CRM 主写；回滚演练用 EBMS_QUOTE_AUTOSYNC=1）');
+  }
 
   // 定时自动化引擎：每30分钟自动扫描问题、自我学习、总结归纳、生成计划、输出行动
   const AI_AUTO_INTERVAL = 30 * 60 * 1000;
@@ -481,5 +487,37 @@ server.listen(PORT, '0.0.0.0', () => {
   logger.info('外部同步调度器: 按配置频率自动同步');
   } else {
     logger.info('[startup] 周期任务已禁用（物料自检/核价同步/AI引擎/外部API），设置 ENABLE_PERIODIC_TASKS=1 启用');
+  }
+
+  // ===== AEOS 出站自动调度（PAND-309 R3）=====
+  // 切流后 EBMS 仍有 admin 应急写路径；这些变更必须自动回流 CRM，不能只靠人工 flush。
+  // 独立于 ENABLE_PERIODIC_TASKS：AEOS 通道的负载是「按条发送」，不写大文件。
+  // 关闭：EBMS_AEOS_AUTOSYNC=0；间隔：EBMS_AEOS_FLUSH_INTERVAL_MS（默认 5 分钟，下限 30s）。
+  if (process.env.EBMS_AEOS_AUTOSYNC !== '0') {
+    try {
+      const aeosOutbox = require('./lib/aeos-outbox');
+      const intervalMs = Math.max(30000, parseInt(process.env.EBMS_AEOS_FLUSH_INTERVAL_MS, 10) || 5 * 60 * 1000);
+      let flushing = false;
+      async function flushAeosOutbox() {
+        if (flushing) return;
+        flushing = true;
+        try {
+          const r = await aeosOutbox.flush({});
+          if (r.sent || r.failed || r.deadLetter) {
+            logger.info(`[AEOS] 出站自动投递 attempted=${r.attempted} sent=${r.sent} failed=${r.failed} dead=${r.deadLetter}`);
+          }
+        } catch (e) {
+          logger.error('[AEOS] 出站自动投递失败:', e.message);
+        } finally {
+          flushing = false;
+        }
+      }
+      setTimeout(() => { flushAeosOutbox(); setInterval(flushAeosOutbox, intervalMs); }, 15000);
+      logger.info(`[AEOS] 出站自动调度已启用：每 ${Math.round(intervalMs / 1000)}s 投递 EBMS→CRM 事件`);
+    } catch (e) {
+      logger.warn('[AEOS] 出站自动调度未启动:', e.message);
+    }
+  } else {
+    logger.info('[AEOS] 出站自动调度已关闭（EBMS_AEOS_AUTOSYNC=0）');
   }
 });

@@ -36,7 +36,9 @@ const ENUMS = {
     'quoted', 'negotiating', 'sample', 'project', 'lost', 'closed'],
   inquiry_certificate_compliant: ['是', '否'],
   inquiry_certificate_level: ['国标', '行标', '企标', '无证书'],
-  quote_library_certificate_level: ['CE', 'ROHS', 'CCC', 'UL', 'ETL'],
+  // PAND-309 R1：EBMS「标准等级」与 CRM「认证类型」不是同一维度，取值域取并集，
+  // 保真承接两侧存量（CRM/EBMS 均有 24 条「国标」报价，属真实定价维度，不得置空）。
+  quote_library_certificate_level: ['CE', 'ROHS', 'CCC', 'UL', 'ETL', '国标', '行标', '企标', '无证书'],
   order_status: ['open', 'confirmed', 'procurement_ready', 'material_ready', 'packaging_done',
     'shipped', 'completed', 'closed', 'cancelled'],
   // 待签批 13：现状双轨（表单 low/medium/high，列表过滤 blue/yellow/red），冻结默认 blue + 保留两组值
