@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <script src="icons.js"></script>
+  <meta charset="UTF-8">
+  <script src="fetch-auth.js"></script>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>EBMS企业经营管理系统 - 微系统</title>
+  <link rel="stylesheet" href="common.css">
+  <style>
+    .poms{--poms-ink:#17243b;--poms-muted:#6b788d;--poms-line:#e2e8f0;--poms-blue:#1767c9;--poms-pale:#eaf2fe;--poms-green:#11836b;--poms-orange:#db8328;--poms-red:#c33a4e}
+    .poms-hero{background:linear-gradient(135deg,#10233b 0%,#1d4f83 100%);color:#fff;border-radius:16px;padding:20px 22px;margin-bottom:16px;box-shadow:0 10px 26px rgba(16,35,59,.18)}
+    .poms-hero-top{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-start}
+    .poms-hero h2{margin:0 0 5px;font-size:22px;letter-spacing:.5px}
+    .poms-hero .sub{font-size:12px;color:#b9cbe0}
+    .poms-hero .who{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .poms-hero .who b{font-size:15px}
+    .poms-chip{display:inline-block;font-size:11px;padding:3px 9px;border-radius:20px;background:rgba(255,255,255,.13);color:#dbe8f7;border:1px solid rgba(255,255,255,.16);white-space:nowrap}
+    .poms-chip.light{background:#fff;color:#1d4f83;border-color:#fff;font-weight:600}
+    .poms-hero-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .poms-btn{border:1px solid #cbd7e7;border-radius:9px;background:#fff;color:#23415e;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;box-sizing:border-box;white-space:nowrap}
+    .poms-btn.primary{background:var(--poms-blue);border-color:var(--poms-blue);color:#fff}
+    .poms-btn.dark{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.3);color:#fff}
+    .poms-btn.small{padding:5px 10px;font-size:12px}
+    .poms-btn:disabled{opacity:.55;cursor:not-allowed}
+    .poms-health{font-size:11px;color:#cfe0f4;margin-top:10px}
+    .poms-health .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#f5b942;margin-right:5px;vertical-align:1px}
+    .poms-health .dot.ok{background:#43d39e}
+    .poms-health .dot.bad{background:#ff7b7b}
+    .poms-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:12px;margin-bottom:16px}
+    .poms-metric{background:#fff;border:1px solid var(--poms-line);border-radius:12px;padding:14px 16px;box-shadow:0 2px 8px rgba(16,35,59,.05)}
+    .poms-metric .l{font-size:11px;color:var(--poms-muted)}
+    .poms-metric .n{font-size:24px;font-weight:800;color:var(--poms-ink);margin:3px 0 1px;line-height:1.2}
+    .poms-metric .m{font-size:11px;color:var(--poms-muted)}
+    .poms-metric.blue .n{color:var(--poms-blue)}.poms-metric.orange .n{color:var(--poms-orange)}.poms-metric.red .n{color:var(--poms-red)}.poms-metric.green .n{color:var(--poms-green)}
+    .poms-tabs{display:flex;gap:6px;border-bottom:2px solid var(--poms-line);margin-bottom:16px;overflow-x:auto}
+    .poms-tab{border:0;background:none;padding:10px 16px;font-size:13px;font-weight:600;color:var(--poms-muted);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+    .poms-tab.active{color:var(--poms-blue);border-bottom-color:var(--poms-blue)}
+    .poms-pane{display:none}.poms-pane.active{display:block}
+    .poms-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(260px,1fr);gap:14px;align-items:start}
+    .poms-panel{background:#fff;border:1px solid var(--poms-line);border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 2px 8px rgba(16,35,59,.05)}
+    .poms-panel h3{font-size:14px;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;color:var(--poms-ink)}
+    .poms-panel h3 .tag{font-size:11px;color:var(--poms-muted);font-weight:400}
+    .poms-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+    .poms-tools select{padding:7px 10px;border:1px solid var(--poms-line);border-radius:8px;font-size:12px;background:#fff}
+    .poms-muted{font-size:12px;color:var(--poms-muted);line-height:1.7}
+    .poms-notice{border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.7;margin-bottom:12px}
+    .poms-notice.warn{background:#fff8e5;border:1px solid #f0d48b;color:#7a5b12}
+    .poms-notice.info{background:#eef5ff;border:1px solid #cfe0f7;color:#24508f}
+    .poms-table{width:100%;border-collapse:collapse;font-size:13px}
+    .poms-table th{text-align:left;padding:9px 8px;color:var(--poms-muted);font-size:12px;font-weight:600;border-bottom:1px solid var(--poms-line);white-space:nowrap}
+    .poms-table td{padding:9px 8px;border-bottom:1px solid #eef2f7;vertical-align:top}
+    .poms-table tr:hover td{background:#f8fbff}
+    .poms-title{font-weight:600;color:var(--poms-ink);word-break:break-word}
+    .poms-desc{font-size:11px;color:var(--poms-muted);margin-top:3px;word-break:break-word}
+    .poms-badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;white-space:nowrap}
+    .poms-badge.pending{background:#e8f0fe;color:#1a56db}
+    .poms-badge.progress{background:#e6f7ff;color:#0070a8}
+    .poms-badge.verify{background:#fff3cd;color:#856404}
+    .poms-badge.blocked{background:#fdecea;color:#b3261e}
+    .poms-badge.done{background:#e6f4ea;color:#1e7e34}
+    .poms-badge.cancel{background:#eef1f5;color:#6b788d}
+    .poms-badge.verified{background:#e6f4ea;color:#1e7e34}
+    .poms-overdue{color:var(--poms-red);font-weight:600}
+    .poms-empty{text-align:center;color:var(--poms-muted);padding:30px 12px}
+    .poms-actions{display:flex;gap:6px;flex-wrap:wrap}
+    .poms-anomaly{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid #eef2f7}
+    .poms-anomaly:last-child{border:0}
+    .poms-anomaly .bar{width:4px;border-radius:4px;background:var(--poms-red);flex:none}
+    .poms-anomaly.warn .bar{background:var(--poms-orange)}
+    .poms-anomaly .body{flex:1;min-width:0}
+    .poms-anomaly .body b{display:block;font-size:12.5px;color:var(--poms-ink);word-break:break-word}
+    .poms-anomaly .body small{display:block;font-size:11px;color:var(--poms-muted);margin-top:2px}
+    .poms-links{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .poms-link{border:1px solid var(--poms-line);border-radius:10px;padding:10px 11px;background:#fbfcfe;color:#23415e;text-decoration:none;font-size:12.5px;font-weight:600}
+    .poms-link small{display:block;font-weight:400;color:var(--poms-muted);font-size:11px;margin-top:2px}
+    .poms-link:hover{border-color:#b9d0ea;background:#f3f8ff}
+    .poms-profile{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+    .poms-kv{border:1px solid var(--poms-line);border-radius:10px;padding:12px 14px;background:#fbfcfe}
+    .poms-kv span{display:block;font-size:11px;color:var(--poms-muted)}
+    .poms-kv b{display:block;font-size:14px;margin-top:4px;color:var(--poms-ink);word-break:break-word}
+    .poms-chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
+    .poms-chips .c{font-size:12px;background:var(--poms-pale);color:#24508f;border:1px solid #d7e5f6;border-radius:20px;padding:4px 10px}
+    .poms-agent{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+    .poms-agent .box{flex:1;min-width:240px;border:1px solid var(--poms-line);border-radius:12px;padding:16px;background:#fbfcfe}
+    .poms-agent .box h4{margin:0 0 6px;font-size:14px;color:var(--poms-ink)}
+    .poms-agent .box p{margin:0 0 12px;font-size:12px;color:var(--poms-muted);line-height:1.7}
+    .poms-form{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;margin-bottom:12px}
+    .poms-form .fg{display:flex;flex-direction:column;gap:4px}
+    .poms-form label{font-size:11px;color:var(--poms-muted)}
+    .poms-form input{padding:8px 10px;border:1px solid var(--poms-line);border-radius:8px;font-size:12px;box-sizing:border-box}
+    .poms-mo{display:none;position:fixed;inset:0;background:rgba(15,39,68,.55);z-index:1000;justify-content:center;align-items:flex-start;padding:24px 16px}
+    .poms-mo.ac{display:flex}
+    .poms-box{background:#fff;border-radius:14px;padding:20px;width:560px;max-width:96%;max-height:88vh;overflow:auto}
+    .poms-box h4{margin:0 0 12px;font-size:16px}
+    .poms-fg{margin-bottom:12px}
+    .poms-fg label{display:block;font-size:12px;color:var(--poms-muted);margin-bottom:4px}
+    .poms-fg input,.poms-fg select,.poms-fg textarea{width:100%;padding:8px 10px;border:1px solid var(--poms-line);border-radius:8px;font-size:13px;box-sizing:border-box}
+    .poms-fg textarea{min-height:86px;resize:vertical}
+    .poms-box-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+    @media(max-width:900px){.poms-grid{grid-template-columns:1fr}.poms-form{grid-template-columns:1fr}}
+    @media(max-width:720px){.poms-table thead{display:none}.poms-table tr{display:block;border-bottom:1px solid var(--poms-line);padding:8px 0}.poms-table td{display:block;border:none;padding:3px 0}.poms-table td::before{content:attr(data-label);display:inline-block;min-width:66px;color:var(--poms-muted);font-size:11px}.poms-links{grid-template-columns:1fr}}
+  </style>
+</head>
+<body data-page-title="微系统">
+<div class="sidebar" id="sidebar"></div>
+<div class="main-content poms">
+  <div class="poms-hero">
+    <div class="poms-hero-top">
+      <div>
+        <h2>EBMS 微系统</h2>
+        <div class="sub">岗位个人操作工作面 / 管理行动执行闭环 / 与 M10 POMS 对接</div>
+        <div class="who">
+          <b id="pomsName">加载中...</b>
+          <span class="poms-chip" id="pomsDept">部门</span>
+          <span class="poms-chip" id="pomsRoles">角色</span>
+          <span class="poms-chip light" id="pomsMapped">人员映射</span>
+        </div>
+      </div>
+      <div class="poms-hero-actions">
+        <button class="poms-btn dark" id="pomsRefresh" onclick="loadAll()">刷新</button>
+        <a class="poms-btn" id="pomsPortal" href="#" target="_blank" rel="noopener" style="display:none">打开 M10 微系统</a>
+        <a class="poms-btn primary" href="ai-assistant.html">AI 经营助手</a>
+      </div>
+    </div>
+    <div class="poms-health" id="pomsHealth"><span class="dot"></span>正在读取对接状态...</div>
+  </div>
+
+  <div class="poms-metrics" id="pomsMetrics"></div>
+
+  <div class="poms-tabs" role="tablist">
+    <button class="poms-tab active" data-pane="todos" onclick="switchPane('todos')">我的待办</button>
+    <button class="poms-tab" data-pane="results" onclick="switchPane('results')">执行结果</button>
+    <button class="poms-tab" data-pane="profile" onclick="switchPane('profile')">我的岗位</button>
+    <button class="poms-tab" data-pane="agent" onclick="switchPane('agent')">个人 Agent</button>
+    <button class="poms-tab" data-pane="status" onclick="switchPane('status')">对接自检</button>
+  </div>
+
+  <div class="poms-pane active" id="pane-todos">
+    <div id="pomsUnmapped" class="poms-notice warn" style="display:none"></div>
+    <div class="poms-grid">
+      <div class="poms-panel">
+        <h3>
+          <span>我的经营待办</span>
+          <span class="poms-tools">
+            <select id="pomsStatusFilter" onchange="loadItems()">
+              <option value="">未完成</option>
+              <option value="pending">待处理</option>
+              <option value="in_progress">进行中</option>
+              <option value="blocked">已阻塞</option>
+              <option value="awaiting_acceptance">待验收</option>
+              <option value="done">已完成</option>
+            </select>
+          </span>
+        </h3>
+        <div class="poms-muted">工作项来自 EBMS 管理行动（SOP / AI 经营助手），在 M10 执行后回写原单据，不新建第二套待办事实源。</div>
+        <div style="overflow-x:auto;margin-top:12px">
+          <table class="poms-table">
+            <thead><tr><th>事项</th><th>来源</th><th>优先级</th><th>截止</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody id="pomsItems"><tr><td colspan="6" class="poms-empty">加载中...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <div class="poms-panel">
+          <h3><span>异常专区</span><span class="tag" id="pomsAnomalyCount">0 条</span></h3>
+          <div id="pomsAnomalies"><div class="poms-empty">暂无逾期或阻塞事项</div></div>
+        </div>
+        <div class="poms-panel">
+          <h3><span>快捷入口</span></h3>
+          <div class="poms-links">
+            <a class="poms-link" href="sop.html">产销协调会<small>Action 与决议</small></a>
+            <a class="poms-link" href="order.html">订单管理<small>订单与交付状态</small></a>
+            <a class="poms-link" href="project.html">项目管理<small>研发项目与进度</small></a>
+            <a class="poms-link" href="inquiry.html">询价管理<small>客户询价跟进</small></a>
+            <a class="poms-link" href="ai-assistant.html">AI 经营助手<small>经营分析与行动建议</small></a>
+            <a class="poms-link" href="m10.html">微系统自检<small>对接状态与人员映射</small></a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="poms-pane" id="pane-results">
+    <div class="poms-panel">
+      <h3><span>近期执行结果</span><span class="tag">done != verified</span></h3>
+      <div class="poms-notice info">结果只展示已闭环的管理行动与证据引用；未经过管理侧确认的结果标记为“待验证”，不伪造为已达标。</div>
+      <div style="overflow-x:auto">
+        <table class="poms-table">
+          <thead><tr><th>结果</th><th>来源</th><th>验证</th><th>证据</th><th>时间</th></tr></thead>
+          <tbody id="pomsResults"><tr><td colspan="5" class="poms-empty">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="poms-pane" id="pane-profile">
+    <div class="poms-panel">
+      <h3><span>我的岗位与权限</span><span class="tag">来自 EBMS 组织与角色</span></h3>
+      <div class="poms-profile" id="pomsProfile"></div>
+      <h3 style="margin-top:18px"><span>岗位职责与角色</span></h3>
+      <div class="poms-chips" id="pomsRoleChips"></div>
+      <div class="poms-muted" style="margin-top:12px">M10 POMS 使用同一份人员与角色信息装配岗位工作面；EBMS 不另建岗位主数据。</div>
+    </div>
+  </div>
+
+  <div class="poms-pane" id="pane-agent">
+    <div class="poms-panel">
+      <h3><span>个人 Agent</span><span class="tag">由 AEOS Hub / M01 提供</span></h3>
+      <div class="poms-agent">
+        <div class="box">
+          <h4>经营分析助手</h4>
+          <p>读取 EBMS 经营上下文，生成经营分析、风险提示和可跟踪行动项。Agent 不得绕过权限直接写入重大正式数据。</p>
+          <a class="poms-btn primary" href="ai-assistant.html">进入 AI 经营助手</a>
+        </div>
+        <div class="box">
+          <h4>M10 个人操作面</h4>
+          <p>M10 POMS 是正式的执行者个人微系统，负责 Future Todo、Current Exception、Past Result 与 Personal Agent 的统一入口。</p>
+          <a class="poms-btn" id="pomsAgentPortal" href="#" target="_blank" rel="noopener" style="display:none">打开 M10 POMS</a>
+          <span class="poms-muted" id="pomsAgentPortalHint">未配置 M10_PORTAL_URL</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="poms-pane" id="pane-status">
+    <div id="pomsStatusDenied" class="poms-notice warn" style="display:none">当前账号不是系统管理员，对接状态、人员映射和反馈日志仅管理员可见。</div>
+    <div class="poms-grid">
+      <div class="poms-panel">
+        <h3><span>M10 对接状态</span><span class="tag">M10-POMS.V1</span></h3>
+        <div id="pomsStatusBox"><div class="poms-empty">加载中...</div></div>
+        <h3 style="margin-top:18px"><span>执行反馈日志</span></h3>
+        <div style="overflow-x:auto">
+          <table class="poms-table">
+            <thead><tr><th>反馈</th><th>人员</th><th>结果</th><th>条数</th><th>时间</th></tr></thead>
+            <tbody id="pomsLogs"><tr><td colspan="5" class="poms-empty">暂无记录</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="poms-panel">
+        <h3><span>人员映射</span><span class="tag" id="pomsLinkCount">0 条</span></h3>
+        <form class="poms-form" onsubmit="savePersonLink(event)">
+          <div class="fg"><label>M10 person_id</label><input id="pomsLinkM10" placeholder="例如 p-002" required></div>
+          <div class="fg"><label>EBMS 用户 ID</label><input id="pomsLinkUser" placeholder="例如 2" required></div>
+          <button class="poms-btn primary" type="submit">保存映射</button>
+        </form>
+        <div class="poms-muted" style="margin-bottom:10px">M10 人员 ID 若不是 EBMS 用户名或工号，需要在此建立映射。</div>
+        <div style="overflow-x:auto">
+          <table class="poms-table">
+            <thead><tr><th>M10 人员</th><th>EBMS 用户</th><th>姓名</th><th>工号</th></tr></thead>
+            <tbody id="pomsLinks"><tr><td colspan="4" class="poms-empty">暂无映射</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="poms-mo" id="pomsModal">
+  <div class="poms-box">
+    <h4>回写执行反馈</h4>
+    <div class="poms-fg"><label>事项</label><input id="pomsModalTitle" readonly></div>
+    <div class="poms-fg">
+      <label>执行状态</label>
+      <select id="pomsModalStatus">
+        <option value="in_progress">开始处理</option>
+        <option value="blocked">标记阻塞</option>
+        <option value="done">标记完成</option>
+      </select>
+    </div>
+    <div class="poms-fg"><label>证据链接（可选，完成时建议填写）</label><input id="pomsModalEvidence" placeholder="https://... 或 EBMS 上传文件地址"></div>
+    <div class="poms-fg"><label>备注</label><textarea id="pomsModalRemark" placeholder="执行结果、阻塞原因、验收说明"></textarea></div>
+    <div class="poms-box-foot">
+      <button class="poms-btn" onclick="closeModal()">取消</button>
+      <button class="poms-btn primary" id="pomsModalSave" onclick="submitFeedback()">提交</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const POMS_STATUS_LABEL = {
+  pending: '待处理',
+  in_progress: '进行中',
+  blocked: '已阻塞',
+  awaiting_acceptance: '待验收',
+  done: '已完成',
+  cancelled: '已取消'
+};
+const POMS_STATUS_CLASS = {
+  pending: 'pending',
+  in_progress: 'progress',
+  blocked: 'blocked',
+  awaiting_acceptance: 'verify',
+  done: 'done',
+  cancelled: 'cancel'
+};
+const POMS_SOURCE_LABEL = {
+  SopAction: 'SOP 行动',
+  AiAction: 'AI 行动',
+  ChatActionItem: 'AI 会话'
+};
+const pomsState = { ws: null, items: [], results: [], status: null, links: [], current: null, pane: 'todos' };
+
+function pomsEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function pomsDate(v) {
+  if (!v) return '';
+  return String(v).replace('T', ' ').slice(0, 16);
+}
+async function pomsGet(url) {
+  const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(body.error || ('请求失败：' + res.status));
+    err.status = res.status;
+    throw err;
+  }
+  return body;
+}
+function switchPane(name) {
+  pomsState.pane = name;
+  document.querySelectorAll('.poms-tab').forEach(b => b.classList.toggle('active', b.getAttribute('data-pane') === name));
+  document.querySelectorAll('.poms-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + name));
+  if (name === 'status' && pomsState.ws) loadStatus();
+}
+async function loadAll() {
+  const btn = document.getElementById('pomsRefresh');
+  if (btn) btn.disabled = true;
+  try {
+    const ws = await pomsGet('/api/m10/me/workspace');
+    pomsState.ws = ws;
+    renderHero(ws);
+    await Promise.all([loadItems(), loadResults(), loadStatus()]);
+  } catch (e) {
+    document.getElementById('pomsName').textContent = '加载失败';
+    document.getElementById('pomsHealth').innerHTML = '<span class="dot bad"></span>' + pomsEsc(e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+function renderHero(ws) {
+  document.getElementById('pomsName').textContent = ws.name || '未映射人员';
+  document.getElementById('pomsDept').textContent = ws.department || '未设置部门';
+  document.getElementById('pomsRoles').textContent = (ws.role_codes || []).length ? (ws.role_codes || []).join(' / ') : '未分配角色';
+  document.getElementById('pomsMapped').textContent = ws.person_unmapped ? '人员未映射' : '人员已映射';
+  const portal = ws.portal_url || '';
+  const a = document.getElementById('pomsPortal');
+  const ap = document.getElementById('pomsAgentPortal');
+  const hint = document.getElementById('pomsAgentPortalHint');
+  if (portal) {
+    a.style.display = '';
+    a.href = portal;
+    ap.style.display = '';
+    ap.href = portal;
+    hint.style.display = 'none';
+  } else {
+    a.style.display = 'none';
+    ap.style.display = 'none';
+    hint.style.display = '';
+  }
+  const unmapped = document.getElementById('pomsUnmapped');
+  if (ws.person_unmapped) {
+    unmapped.style.display = '';
+    unmapped.textContent = '当前账号尚未映射到 EBMS 人员，无法查看个人待办。请联系管理员在“对接自检 - 人员映射”中补齐。';
+  } else {
+    unmapped.style.display = 'none';
+  }
+  renderMetrics();
+  renderProfile(ws);
+}
+function renderMetrics(summary) {
+  const ws = pomsState.ws || {};
+  const todoWidget = (ws.widgets || []).find(w => w.id === 'future_todos') || {};
+  const s = summary || todoWidget.summary || {};
+  const resultWidget = (ws.widgets || []).find(w => w.id === 'past_results') || { count: 0 };
+  const cards = [
+    ['待办总数', s.total || 0, '全部未完成事项', 'blue'],
+    ['待处理', s.pending || 0, '尚未开始', ''],
+    ['进行中', s.in_progress || 0, '正在执行', ''],
+    ['逾期', s.overdue || 0, '超过截止时间', 'red'],
+    ['执行结果', resultWidget.count || 0, '已闭环行动', 'green']
+  ];
+  document.getElementById('pomsMetrics').innerHTML = cards.map(([l, n, m, cls]) =>
+    '<div class="poms-metric ' + cls + '"><div class="l">' + l + '</div><div class="n">' + n + '</div><div class="m">' + m + '</div></div>'
+  ).join('');
+}
+function renderProfile(ws) {
+  const rows = [
+    ['姓名', ws.name || '-'],
+    ['工号', ws.emp_code || '-'],
+    ['部门', ws.department || '-'],
+    ['岗位', (ws.positions || []).join(' / ') || '-'],
+    ['EBMS 用户 ID', ws.ebms_user_id == null ? '-' : ws.ebms_user_id],
+    ['M10 人员 ID', ws.person_id || '-']
+  ];
+  document.getElementById('pomsProfile').innerHTML = rows.map(([k, v]) =>
+    '<div class="poms-kv"><span>' + k + '</span><b>' + pomsEsc(v) + '</b></div>'
+  ).join('');
+  const chips = (ws.role_codes || []).map(r => '<span class="c">' + pomsEsc(r) + '</span>');
+  document.getElementById('pomsRoleChips').innerHTML = chips.length ? chips.join('') : '<span class="poms-muted">暂无角色</span>';
+}
+async function loadItems() {
+  const status = document.getElementById('pomsStatusFilter').value;
+  const url = '/api/m10/me/work-items' + (status ? '?status=' + encodeURIComponent(status) : '');
+  try {
+    const body = await pomsGet(url);
+    pomsState.items = body.items || [];
+    renderItems(pomsState.items);
+    renderMetrics();
+  } catch (e) {
+    document.getElementById('pomsItems').innerHTML = '<tr><td colspan="6" class="poms-empty">' + pomsEsc(e.message) + '</td></tr>';
+  }
+}
+function renderItems(items) {
+  const tb = document.getElementById('pomsItems');
+  if (!items.length) {
+    tb.innerHTML = '<tr><td colspan="6" class="poms-empty">暂无待办</td></tr>';
+    renderAnomalies([]);
+    return;
+  }
+  tb.innerHTML = items.map(item => {
+    const status = item.display_status || 'pending';
+    const badge = '<span class="poms-badge ' + (POMS_STATUS_CLASS[status] || 'pending') + '">' + (POMS_STATUS_LABEL[status] || status) + '</span>';
+    const due = item.due_at
+      ? '<span class="' + (item.overdue ? 'poms-overdue' : '') + '">' + pomsEsc(pomsDate(item.due_at)) + (item.overdue ? '（逾期）' : '') + '</span>'
+      : '<span style="color:#b9c3d1">无</span>';
+    const source = POMS_SOURCE_LABEL[item.source_object_type] || item.source_object_type || '-';
+    const canFeedback = (item.allowed_action_refs || []).length > 0 && status !== 'done' && status !== 'cancelled';
+    const btn = canFeedback
+      ? '<button class="poms-btn primary small" onclick="openFeedback(\'' + pomsEsc(item.work_item_id) + '\')">回写</button>'
+      : '<button class="poms-btn small" disabled>已结束</button>';
+    const link = item.deep_link ? '<a class="poms-btn small" href="' + pomsEsc(item.deep_link) + '">原单据</a>' : '';
+    return '<tr>' +
+      '<td data-label="事项"><div class="poms-title">' + pomsEsc(item.title || '') + '</div><div class="poms-desc">' + pomsEsc(item.description || '') + '</div></td>' +
+      '<td data-label="来源">' + pomsEsc(source) + (item.assignee_role ? '<div class="poms-desc">' + pomsEsc(item.assignee_role) + '</div>' : '') + '</td>' +
+      '<td data-label="优先级">' + pomsEsc(item.priority || '-') + '</td>' +
+      '<td data-label="截止">' + due + '</td>' +
+      '<td data-label="状态">' + badge + '</td>' +
+      '<td data-label="操作"><div class="poms-actions">' + btn + link + '</div></td>' +
+      '</tr>';
+  }).join('');
+  renderAnomalies(items);
+}
+function renderAnomalies(items) {
+  const list = (items || []).filter(i => i.overdue || i.display_status === 'blocked');
+  document.getElementById('pomsAnomalyCount').textContent = list.length + ' 条';
+  const box = document.getElementById('pomsAnomalies');
+  if (!list.length) {
+    box.innerHTML = '<div class="poms-empty">暂无逾期或阻塞事项</div>';
+    return;
+  }
+  box.innerHTML = list.slice(0, 8).map(i => {
+    const isBlocked = i.display_status === 'blocked';
+    return '<div class="poms-anomaly' + (isBlocked ? '' : ' warn') + '"><div class="bar"></div><div class="body">' +
+      '<b>' + pomsEsc(i.title || '') + '</b>' +
+      '<small>' + (isBlocked ? '已阻塞' : '已逾期') + (i.due_at ? ' / 截止 ' + pomsEsc(pomsDate(i.due_at)) : '') + ' / ' + pomsEsc(POMS_SOURCE_LABEL[i.source_object_type] || '') + '</small>' +
+      '</div><button class="poms-btn small" onclick="openFeedback(\'' + pomsEsc(i.work_item_id) + '\')">处理</button></div>';
+  }).join('');
+}
+async function loadResults() {
+  try {
+    const body = await pomsGet('/api/m10/me/results');
+    pomsState.results = body.results || [];
+    const tb = document.getElementById('pomsResults');
+    if (!pomsState.results.length) {
+      tb.innerHTML = '<tr><td colspan="5" class="poms-empty">暂无结果</td></tr>';
+      return;
+    }
+    tb.innerHTML = pomsState.results.map(r => {
+      const verified = r.verification === 'verified';
+      const badge = verified ? '<span class="poms-badge verified">已留证</span>' : '<span class="poms-badge verify">待验证</span>';
+      const evidence = (r.evidence_refs || []).length
+        ? '<a href="' + pomsEsc(r.evidence_refs[0]) + '" target="_blank" rel="noopener">查看证据</a>'
+        : '<span style="color:#b9c3d1">无</span>';
+      return '<tr><td data-label="结果"><div class="poms-title">' + pomsEsc(r.title || '') + '</div><div class="poms-desc">' + pomsEsc(r.result_id || '') + '</div></td>' +
+        '<td data-label="来源">' + pomsEsc(POMS_SOURCE_LABEL[r.source_object_type] || r.source_object_type || '-') + '</td>' +
+        '<td data-label="验证">' + badge + '</td>' +
+        '<td data-label="证据">' + evidence + '</td>' +
+        '<td data-label="时间">' + pomsEsc(pomsDate(r.occurred_at)) + '</td></tr>';
+    }).join('');
+  } catch (e) {
+    document.getElementById('pomsResults').innerHTML = '<tr><td colspan="5" class="poms-empty">' + pomsEsc(e.message) + '</td></tr>';
+  }
+}
+async function loadStatus() {
+  const denied = document.getElementById('pomsStatusDenied');
+  try {
+    const s = await pomsGet('/api/m10/status');
+    pomsState.status = s;
+    denied.style.display = 'none';
+    renderHealth(s);
+    renderStatus(s);
+    await Promise.all([loadLogs(), loadLinks()]);
+  } catch (e) {
+    if (e.status === 401 || e.status === 403) {
+      denied.style.display = '';
+      document.getElementById('pomsStatusBox').innerHTML = '<div class="poms-empty">仅管理员可见</div>';
+      document.getElementById('pomsHealth').innerHTML = '<span class="dot ok"></span>个人工作面已就绪（对接状态仅管理员可见）';
+      return;
+    }
+    document.getElementById('pomsStatusBox').innerHTML = '<div class="poms-empty">' + pomsEsc(e.message) + '</div>';
+  }
+}
+function renderHealth(s) {
+  const t = s.transport || {};
+  const dot = t.ready ? 'ok' : 'bad';
+  document.getElementById('pomsHealth').innerHTML = '<span class="dot ' + dot + '"></span>' +
+    '机器通道：' + (t.ready ? '就绪' : '未就绪') + (t.reason ? '（' + pomsEsc(t.reason) + '）' : '') +
+    ' | 人员映射：' + (s.person_links || 0) + ' 条' +
+    ' | 反馈记录：' + ((s.feedback || {}).total || 0) + ' 条';
+}
+function renderStatus(s) {
+  const t = s.transport || {};
+  const c = s.config || {};
+  const rows = [
+    ['契约版本', s.contract_version || '-'],
+    ['机器通道', t.ready ? '就绪' : '未就绪'],
+    ['令牌配置', t.token_configured ? '已配置' : '未配置'],
+    ['对接开关', c.enabled === false ? '已停用' : '启用'],
+    ['M10 门户', c.portalUrl || '未配置'],
+    ['反馈允许', c.allowFeedback === false ? '已停用' : '允许'],
+    ['人员映射', (s.person_links || 0) + ' 条'],
+    ['反馈记录', String((s.feedback || {}).total || 0) + ' 条']
+  ];
+  document.getElementById('pomsStatusBox').innerHTML = rows.map(([k, v]) =>
+    '<div class="poms-kv" style="margin-bottom:8px"><span>' + k + '</span><b>' + pomsEsc(v) + '</b></div>'
+  ).join('');
+}
+async function loadLogs() {
+  try {
+    const body = await pomsGet('/api/m10/logs?pageSize=10');
+    const rows = body.rows || [];
+    const tb = document.getElementById('pomsLogs');
+    if (!rows.length) {
+      tb.innerHTML = '<tr><td colspan="5" class="poms-empty">暂无记录</td></tr>';
+      return;
+    }
+    tb.innerHTML = rows.map(r => '<tr><td data-label="反馈"><div class="poms-title">' + pomsEsc(r.feedback_id || '-') + '</div></td>' +
+      '<td data-label="人员">' + pomsEsc(r.person_id || '-') + '</td>' +
+      '<td data-label="结果">' + pomsEsc(r.status || '-') + '</td>' +
+      '<td data-label="条数">' + pomsEsc(r.item_count || 0) + '</td>' +
+      '<td data-label="时间">' + pomsEsc(pomsDate(r.received_at)) + '</td></tr>').join('');
+  } catch (e) {
+    document.getElementById('pomsLogs').innerHTML = '<tr><td colspan="5" class="poms-empty">' + pomsEsc(e.message) + '</td></tr>';
+  }
+}
+async function loadLinks() {
+  try {
+    const body = await pomsGet('/api/m10/person-links');
+    pomsState.links = body.rows || [];
+    document.getElementById('pomsLinkCount').textContent = pomsState.links.length + ' 条';
+    const tb = document.getElementById('pomsLinks');
+    if (!pomsState.links.length) {
+      tb.innerHTML = '<tr><td colspan="4" class="poms-empty">暂无映射</td></tr>';
+      return;
+    }
+    tb.innerHTML = pomsState.links.map(r => '<tr><td data-label="M10 人员">' + pomsEsc(r.m10_person_id || '') + '</td>' +
+      '<td data-label="EBMS 用户">' + pomsEsc(r.ebms_user_id || '') + '</td>' +
+      '<td data-label="姓名">' + pomsEsc(r.name || '') + '</td>' +
+      '<td data-label="工号">' + pomsEsc(r.emp_code || '') + '</td></tr>').join('');
+  } catch (e) {
+    document.getElementById('pomsLinks').innerHTML = '<tr><td colspan="4" class="poms-empty">' + pomsEsc(e.message) + '</td></tr>';
+  }
+}
+async function savePersonLink(e) {
+  e.preventDefault();
+  const m10 = document.getElementById('pomsLinkM10').value.trim();
+  const uid = document.getElementById('pomsLinkUser').value.trim();
+  if (!m10 || !uid) return;
+  try {
+    const res = await fetch('/api/m10/person-links', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ m10_person_id: m10, ebms_user_id: uid })
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || ('保存失败：' + res.status));
+    document.getElementById('pomsLinkM10').value = '';
+    document.getElementById('pomsLinkUser').value = '';
+    await loadLinks();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+function openFeedback(workItemId) {
+  const item = pomsState.items.find(x => x.work_item_id === workItemId);
+  if (!item) return;
+  pomsState.current = item;
+  document.getElementById('pomsModalTitle').value = item.title || '';
+  document.getElementById('pomsModalStatus').value = 'done';
+  document.getElementById('pomsModalEvidence').value = (item.evidence_refs || [])[0] || '';
+  document.getElementById('pomsModalRemark').value = '';
+  document.getElementById('pomsModal').classList.add('ac');
+}
+function closeModal() {
+  document.getElementById('pomsModal').classList.remove('ac');
+  pomsState.current = null;
+}
+async function submitFeedback() {
+  if (!pomsState.current) return;
+  const btn = document.getElementById('pomsModalSave');
+  const status = document.getElementById('pomsModalStatus').value;
+  const evidence = document.getElementById('pomsModalEvidence').value.trim();
+  const remark = document.getElementById('pomsModalRemark').value.trim();
+  btn.disabled = true;
+  try {
+    const url = '/api/m10/me/work-items/' + encodeURIComponent(pomsState.current.work_item_id) + '/feedback';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ status, evidence_refs: evidence ? [evidence] : [], remark })
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || (body.errors && body.errors[0] && body.errors[0].message) || ('提交失败：' + res.status));
+    if (body.result === 'conflict') throw new Error('原单据状态已变化，请刷新后重试');
+    closeModal();
+    await loadAll();
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+document.getElementById('pomsModal').addEventListener('click', e => {
+  if (e.target && e.target.id === 'pomsModal') closeModal();
+});
+loadAll();
+</script>
+<script src="brand.js"></script>
+<script src="permission-check.js"></script>
+<script>PermissionCheck.init();</script>
+<script src="chat-widget.js"></script>
+</body>
+</html>

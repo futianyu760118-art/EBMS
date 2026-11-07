@@ -81,6 +81,8 @@ function getUserPermissions(userId) {
     return getUserPermissions(byName.id);
   }
 
+  if (user.status === 'inactive') return { isAdmin: false, perms: new Set() };
+
   if (user.role === 'admin') return { isAdmin: true, perms: null };
 
   const urTable = getTable('user_roles');
@@ -128,6 +130,8 @@ function extractUserId(req) {
   if (m) {
     const payload = verifyToken(m[1].trim());
     if (payload && payload.uid !== undefined && payload.uid !== null) {
+      const user = getTable('users').findById(Number(payload.uid));
+      if (user && user.status === 'inactive') return undefined;
       return Number(payload.uid);
     }
   }

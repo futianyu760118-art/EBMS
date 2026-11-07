@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aeos.local/v1/system-manifest",
+  "title": "SystemManifestV1",
+  "schema_version": "1.0.5",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["system_code", "module_id", "display_name", "base_url", "health_url", "required_scopes", "criticality", "owner", "protocol", "version", "status"],
+  "properties": {
+    "system_code": {"type": "string", "pattern": "^[A-Z0-9_-]+$"}, "module_id": {"type": "string", "minLength": 1},
+    "display_name": {"type": "string", "minLength": 1}, "base_url": {"type": "string", "format": "uri"},
+    "health_url": {"type": "string", "format": "uri"}, "required_scopes": {"type": "array", "items": {"type": "string"}},
+    "criticality": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]}, "owner": {"type": "string", "minLength": 1},
+    "protocol": {"type": "string", "enum": ["HTTPS", "OIDC", "INTERNAL"]}, "version": {"type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$"},
+    "status": {"type": "string", "enum": ["CANDIDATE", "ACTIVE", "DEPRECATED"]}
+  }
+}

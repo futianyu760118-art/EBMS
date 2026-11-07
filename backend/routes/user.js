@@ -13,7 +13,7 @@ router.post('/login', (req, res) => {
     return res.status(400).json({ error: '用户名和密码为必填项' });
   }
   const table = getTable('users');
-  const user = table.all().find(u => u.username === username && verifyPassword(password, u.password));
+  const user = table.all().find(u => u.username === username && u.status !== 'inactive' && verifyPassword(password, u.password));
   if (!user) {
     return res.status(401).json({ error: '用户名或密码错误' });
   }
@@ -27,14 +27,17 @@ router.post('/login', (req, res) => {
 // 获取用户列表
 router.get('/', requirePerm('system:user'), (req, res) => {
   const table = getTable('users');
-  const users = table.all().map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role, created_at: u.created_at }));
+  const includeInactive = req.query.status === 'all';
+  const users = table.all().filter(u => includeInactive || u.status !== 'inactive')
+    .map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role, status: u.status || 'active', created_at: u.created_at }));
   res.json(users);
 });
 
 // 轻量级用户名列表（仅需任意查看权限，用于下拉选项填充）
 router.get('/names', (req, res) => {
   const table = getTable('users');
-  const users = table.all().map(u => ({ id: u.id, name: u.name, role: u.role }));
+  const users = table.all().filter(u => u.status !== 'inactive')
+    .map(u => ({ id: u.id, name: u.name, role: u.role }));
   res.json(users);
 });
 
@@ -43,7 +46,7 @@ router.get('/:id', requirePerm('system:user'), (req, res) => {
   const table = getTable('users');
   const user = table.findById(req.params.id);
   if (!user) return res.status(404).json({ error: '用户不存在' });
-  res.json({ id: user.id, username: user.username, name: user.name, role: user.role, created_at: user.created_at });
+  res.json({ id: user.id, username: user.username, name: user.name, role: user.role, status: user.status || 'active', created_at: user.created_at });
 });
 
 // 创建用户

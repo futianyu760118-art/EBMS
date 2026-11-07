@@ -130,6 +130,10 @@ try {
 const routes = require('./routes');
 app.use('/api', routes);
 
+// AEOS 人员生命周期同步端点（Phase 1 统一契约）：M02 EDP 分发 → EBMS adapter。
+// 独立于 /api 前缀，契约端点 /internal/aeos/person-lifecycle（见 registry M03_EBMS.person_lifecycle_endpoint）。
+app.use('/internal/aeos', require('./routes/aeos-person-lifecycle'));
+
 // ===== Express 统一错误处理 =====
 // 捕获同步异常与 next(err)（如 express.json 解析失败、multer 体积超限），
 // 返回结构化错误而非默认 HTML 堆栈，避免请求悬挂与信息泄露。

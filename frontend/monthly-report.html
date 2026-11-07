@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <script src="icons.js"></script>
+  <meta charset="UTF-8"><script src="fetch-auth.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EBMS企业经营管理系统 - 月度经营报告</title>
+  <link rel="stylesheet" href="common.css">
+  <style>
+    .mr-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .mr-header .spacer { flex: 1; }
+    .mr-tabs { display: flex; gap: 4px; margin: 16px 0; border-bottom: 1px solid #eef0f4; flex-wrap: wrap; }
+    .mr-tab { padding: 9px 16px; font-size: 13px; color: #64748b; cursor: pointer; border: none; background: transparent; border-bottom: 2px solid transparent; font-weight: 600; }
+    .mr-tab:hover { color: #334155; }
+    .mr-tab.active { color: var(--color-primary, #2563eb); border-bottom-color: var(--color-primary, #2563eb); }
+    .mr-panel { display: none; }
+    .mr-panel.active { display: block; }
+
+    .mr-summary { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); padding: 18px; margin-bottom: 16px; }
+    .mr-summary h3 { font-size: 14px; color: #334155; margin-bottom: 10px; }
+    .mr-summary textarea { width: 100%; min-height: 84px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; font-size: 13px; line-height: 1.7; resize: vertical; color: #334155; }
+    .mr-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 16px; }
+    .mr-kpi { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); padding: 16px 18px; border-left: 4px solid #cbd5e1; }
+    .mr-kpi.core { border-left-color: #2563eb; }
+    .mr-kpi.bottleneck { border-left-color: #e74c3c; }
+    .mr-kpi .k-name { font-size: 12px; color: #64748b; margin-bottom: 8px; }
+    .mr-kpi .k-val { font-size: 24px; font-weight: 750; color: #0f172a; }
+    .mr-kpi .k-val .unit { font-size: 13px; font-weight: 600; color: #64748b; margin-left: 3px; }
+    .mr-kpi .k-note { font-size: 11px; color: #94a3b8; margin-top: 6px; line-height: 1.5; }
+
+    .mr-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); padding: 18px; margin-bottom: 16px; }
+    .mr-card h3 { font-size: 14px; color: #334155; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+    .mr-card h3 .hint { font-size: 11px; color: #94a3b8; font-weight: 400; }
+
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+    .dot.green { background: #27ae60; }
+    .dot.yellow { background: #f39c12; }
+    .dot.red { background: #e74c3c; }
+    .dot.gray { background: #bdc3c7; }
+
+    .mr-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .mr-table th, .mr-table td { border: 1px solid #eef0f4; padding: 7px 9px; text-align: left; vertical-align: top; }
+    .mr-table th { background: #f8fafc; color: #64748b; font-weight: 600; white-space: nowrap; }
+    .mr-table td input, .mr-table td select, .mr-table td textarea { width: 100%; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 8px; font-size: 12px; color: #334155; background: #fff; box-sizing: border-box; }
+    .mr-table td input:focus, .mr-table td select:focus, .mr-table td textarea:focus { border-color: #93c5fd; outline: none; }
+    .mr-table td textarea { min-height: 48px; resize: vertical; line-height: 1.5; }
+    .mr-table td .col-sm { min-width: 60px; }
+    .mr-table td .col-md { min-width: 120px; }
+    .mr-table td .col-lg { min-width: 200px; }
+    .mr-table .row-del { color: #e74c3c; cursor: pointer; font-size: 16px; text-align: center; }
+    .mr-table .row-del:hover { opacity: 0.7; }
+
+    .mr-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+    .mr-empty { color: #94a3b8; text-align: center; padding: 40px 0; font-size: 13px; }
+
+    .mr-legend { display: flex; gap: 14px; align-items: center; font-size: 12px; color: #64748b; flex-wrap: wrap; }
+    .mr-section-title { font-size: 13px; font-weight: 700; color: #334155; margin: 18px 0 10px; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+  </style>
+</head>
+<body data-page-title="月度经营报告" data-page-perm="monthly-report:view">
+  <div class="sidebar" id="sidebar"></div>
+
+  <div class="main-content">
+    <div class="header mr-header">
+      <h2>月度经营报告</h2>
+      <select id="periodSelect" class="mr-select" onchange="selectReport(this.value)" style="padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;min-width:160px;"></select>
+      <button class="btn btn-primary btn-sm" data-perm="monthly-report:create" onclick="createReport()">新建报告</button>
+      <button class="btn btn-sm" style="background:#fee2e2;color:#b91c1c;" data-perm="monthly-report:delete" onclick="deleteReport()">删除本报告</button>
+      <div class="spacer"></div>
+      <div class="mr-legend">
+        <span><span class="dot green"></span>达标</span>
+        <span><span class="dot yellow"></span>承压</span>
+        <span><span class="dot red"></span>未达标</span>
+        <span><span class="dot gray"></span>未填报</span>
+      </div>
+    </div>
+
+    <div class="mr-tabs" id="mrTabs">
+      <button class="mr-tab active" data-tab="cockpit">经营驾驶舱</button>
+      <button class="mr-tab" data-tab="indicators">指标明细</button>
+      <button class="mr-tab" data-tab="actions">决议履约</button>
+      <button class="mr-tab" data-tab="issues">问题诊断</button>
+      <button class="mr-tab" data-tab="decisions">决策清单</button>
+    </div>
+
+    <!-- 经营驾驶舱 -->
+    <div class="mr-panel active" id="panel-cockpit">
+      <div class="mr-summary">
+        <h3>本月一句话</h3>
+        <textarea id="summaryInput" placeholder="填入本月经营的一句话总结…"></textarea>
+        <div style="margin-top:10px;text-align:right;">
+          <button class="btn btn-primary btn-sm" data-perm="monthly-report:edit" onclick="saveSummary()">保存总结</button>
+        </div>
+      </div>
+      <h4 class="mr-section-title">核心指标</h4>
+      <div class="mr-kpi-grid" id="coreKpis"></div>
+      <h4 class="mr-section-title">关键瓶颈</h4>
+      <div class="mr-kpi-grid" id="bottleneckKpis"></div>
+      <div class="mr-card">
+        <h3>12 部门红黄绿 <span class="hint">数据来自「指标明细 → 部门红黄绿」</span></h3>
+        <div id="deptTable"></div>
+      </div>
+    </div>
+
+    <!-- 指标明细 -->
+    <div class="mr-panel" id="panel-indicators">
+      <div class="mr-toolbar">
+        <button class="btn btn-primary btn-sm" data-perm="monthly-report:edit" onclick="saveTab('indicators')">保存指标明细</button>
+        <button class="btn btn-sm" style="background:#eef2ff;color:#4338ca;" onclick="addRow('dept_summary')">+ 部门红黄绿</button>
+        <button class="btn btn-sm" style="background:#eef2ff;color:#4338ca;" onclick="addRow('indicators')">+ 指标</button>
+      </div>
+      <h4 class="mr-section-title">部门红黄绿</h4>
+      <div class="mr-card" style="padding:10px;"><table class="mr-table" id="tbl-dept_summary"></table></div>
+      <h4 class="mr-section-title">指标明细</h4>
+      <div class="mr-card" style="padding:10px;"><table class="mr-table" id="tbl-indicators"></table></div>
+    </div>
+
+    <!-- 决议履约 -->
+    <div class="mr-panel" id="panel-actions">
+      <div class="mr-toolbar">
+        <button class="btn btn-primary btn-sm" data-perm="monthly-report:edit" onclick="saveTab('actions')">保存决议履约</button>
+        <button class="btn btn-sm" style="background:#eef2ff;color:#4338ca;" onclick="addRow('actions')">+ 行动项</button>
+      </div>
+      <div class="mr-card" style="padding:10px;"><table class="mr-table" id="tbl-actions"></table></div>
+    </div>
+
+    <!-- 问题诊断 -->
+    <div class="mr-panel" id="panel-issues">
+      <div class="mr-toolbar">
+        <button class="btn btn-primary btn-sm" data-perm="monthly-report:edit" onclick="saveTab('issues')">保存问题诊断</button>
+        <button class="btn btn-sm" style="background:#eef2ff;color:#4338ca;" onclick="addRow('issues')">+ 问题</button>
+      </div>
+      <div class="mr-card" style="padding:10px;"><table class="mr-table" id="tbl-issues"></table></div>
+    </div>
+
+    <!-- 决策清单 -->
+    <div class="mr-panel" id="panel-decisions">
+      <div class="mr-toolbar">
+        <button class="btn btn-primary btn-sm" data-perm="monthly-report:edit" onclick="saveTab('decisions')">保存决策清单</button>
+        <button class="btn btn-sm" style="background:#eef2ff;color:#4338ca;" onclick="addRow('decisions')">+ 决策</button>
+      </div>
+      <div class="mr-card" style="padding:10px;"><table class="mr-table" id="tbl-decisions"></table></div>
+    </div>
+  </div>
+
+  <script>
+    const STATUS_MAP = { green: '达标', yellow: '承压', red: '未达标', gray: '未填报' };
+    const CATEGORY_MAP = { core: '核心指标', bottleneck: '关键瓶颈', dept: '部门明细' };
+    const ACTION_STATUS_MAP = { pending: '待办', transferred: '已转派', done: '已完成' };
+
+    // 各实体表格列定义
+    const COLUMNS = {
+      dept_summary: [
+        { key: 'department', label: '部门', type: 'text', cls: 'col-md' },
+        { key: 'indicator_count', label: '指标数', type: 'text', cls: 'col-sm' },
+        { key: 'achieved', label: '达标项', type: 'text', cls: 'col-lg' },
+        { key: 'not_achieved', label: '未达标/承压', type: 'text', cls: 'col-lg' },
+        { key: 'judgment', label: '判断', type: 'select', options: STATUS_MAP, cls: 'col-sm' },
+        { key: 'note', label: '备注', type: 'text', cls: 'col-md' }
+      ],
+      indicators: [
+        { key: 'department', label: '部门', type: 'text', cls: 'col-md' },
+        { key: 'category', label: '类别', type: 'select', options: CATEGORY_MAP, cls: 'col-sm' },
+        { key: 'name', label: '指标名', type: 'text', cls: 'col-lg' },
+        { key: 'target', label: '目标', type: 'text', cls: 'col-md' },
+        { key: 'actual', label: '实际', type: 'text', cls: 'col-md' },
+        { key: 'unit', label: '单位', type: 'text', cls: 'col-sm' },
+        { key: 'status', label: '状态', type: 'select', options: STATUS_MAP, cls: 'col-sm' },
+        { key: 'note', label: '说明', type: 'text', cls: 'col-lg' }
+      ],
+      actions: [
+        { key: 'seq', label: '序号', type: 'text', cls: 'col-sm' },
+        { key: 'content', label: '项目内容', type: 'text', cls: 'col-lg' },
+        { key: 'owner', label: '责任人', type: 'text', cls: 'col-sm' },
+        { key: 'due_date', label: '原节点', type: 'text', cls: 'col-sm' },
+        { key: 'new_due_date', label: '新节点', type: 'text', cls: 'col-sm' },
+        { key: 'status', label: '状态', type: 'select', options: ACTION_STATUS_MAP, cls: 'col-sm' },
+        { key: 'note', label: '备注', type: 'text', cls: 'col-md' }
+      ],
+      issues: [
+        { key: 'level', label: '等级', type: 'select', options: { P1: 'P1', P2: 'P2', P3: 'P3', P4: 'P4', P5: 'P5' }, cls: 'col-sm' },
+        { key: 'title', label: '标题', type: 'text', cls: 'col-lg' },
+        { key: 'owner', label: '责任人', type: 'text', cls: 'col-sm' },
+        { key: 'deadline', label: '时限', type: 'text', cls: 'col-sm' },
+        { key: 'problem', label: '问题描述', type: 'textarea', cls: 'col-lg' },
+        { key: 'actions', label: '关键动作', type: 'textarea', cls: 'col-lg' }
+      ],
+      decisions: [
+        { key: 'seq', label: '序号', type: 'text', cls: 'col-sm' },
+        { key: 'level', label: '等级', type: 'text', cls: 'col-sm' },
+        { key: 'title', label: '标题', type: 'text', cls: 'col-lg' },
+        { key: 'owner', label: '责任人', type: 'text', cls: 'col-sm' },
+        { key: 'deadline', label: '时限', type: 'text', cls: 'col-sm' },
+        { key: 'problem', label: '问题', type: 'textarea', cls: 'col-lg' },
+        { key: 'action', label: '拍什么', type: 'textarea', cls: 'col-lg' }
+      ]
+    };
+
+    let reports = [];
+    let current = null;
+
+    function esc(s) {
+      if (s === null || s === undefined) return '';
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function attrEsc(s) { return esc(s); }
+
+    // 前端实体键 → 后端 URL 路径段（dept_summary 在接口里用 kebab）
+    const URL_KEY = { dept_summary: 'dept-summary', indicators: 'indicators', actions: 'actions', issues: 'issues', decisions: 'decisions' };
+
+    async function api(path, opts) {
+      const res = await fetch('/api/monthly-report' + path, opts);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ('请求失败 ' + res.status));
+      return data;
+    }
+
+    async function loadReports() {
+      const sel = document.getElementById('periodSelect');
+      reports = await api('/reports');
+      sel.innerHTML = '';
+      if (reports.length === 0) {
+        sel.innerHTML = '<option value="">（暂无报告）</option>';
+        current = null;
+        renderEmpty();
+        return;
+      }
+      reports.forEach(r => {
+        const o = document.createElement('option');
+        o.value = r.id;
+        o.textContent = r.period + ' · ' + (r.title || '');
+        sel.appendChild(o);
+      });
+      const last = localStorage.getItem('mr_active_period') || reports[0].id;
+      const target = reports.find(r => String(r.id) === String(last)) || reports[0];
+      sel.value = target.id;
+      await selectReport(target.id);
+    }
+
+    async function selectReport(id) {
+      if (!id) { renderEmpty(); return; }
+      current = await api('/reports/' + id);
+      localStorage.setItem('mr_active_period', String(id));
+      renderAll();
+    }
+
+    function renderEmpty() {
+      ['coreKpis', 'bottleneckKpis', 'deptTable'].forEach(id => { document.getElementById(id).innerHTML = '<div class="mr-empty">暂无数据，请新建或选择报告</div>'; });
+      document.getElementById('summaryInput').value = '';
+      COLUMNS && Object.keys(COLUMNS).forEach(k => { const el = document.getElementById('tbl-' + k); if (el) el.innerHTML = ''; });
+    }
+
+    function renderAll() {
+      renderCockpit();
+      renderTable('dept_summary');
+      renderTable('indicators');
+      renderTable('actions');
+      renderTable('issues');
+      renderTable('decisions');
+      window.applyPermissionFilter && window.applyPermissionFilter();
+    }
+
+    function renderCockpit() {
+      const r = current.report || {};
+      document.getElementById('summaryInput').value = r.summary || '';
+      const core = (current.indicators || []).filter(x => x.category === 'core').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+      const bottle = (current.indicators || []).filter(x => x.category === 'bottleneck').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+      document.getElementById('coreKpis').innerHTML = core.map(kpiCard('core')).join('') || '<div class="mr-empty">无核心指标</div>';
+      document.getElementById('bottleneckKpis').innerHTML = bottle.map(kpiCard('bottleneck')).join('') || '<div class="mr-empty">无瓶颈指标</div>';
+
+      const depts = (current.dept_summary || []).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+      if (depts.length === 0) {
+        document.getElementById('deptTable').innerHTML = '<div class="mr-empty">暂无部门数据</div>';
+        return;
+      }
+      let html = '<table class="mr-table"><thead><tr><th>部门</th><th>指标数</th><th>达标项</th><th>未达标/承压</th><th>判断</th></tr></thead><tbody>';
+      depts.forEach(d => {
+        html += '<tr><td>' + esc(d.department) + '</td><td>' + esc(d.indicator_count) + '</td><td>' + esc(d.achieved) + '</td><td>' + esc(d.not_achieved) + '</td><td>' + judgmentBadge(d.judgment) + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      document.getElementById('deptTable').innerHTML = html;
+    }
+
+    function kpiCard(cat) {
+      return function (k) {
+        const val = k.actual === null || k.actual === undefined || k.actual === '' ? '—' : esc(k.actual);
+        const unit = k.unit ? '<span class="unit">' + esc(k.unit) + '</span>' : '';
+        const target = k.target ? '目标 ' + esc(k.target) : '';
+        const note = (target ? target + ' · ' : '') + esc(k.note || '');
+        return '<div class="mr-kpi ' + cat + '">' +
+          '<div class="k-name">' + esc(k.name) + '</div>' +
+          '<div class="k-val">' + val + unit + '</div>' +
+          '<div class="k-note">' + note + '</div>' +
+          '</div>';
+      };
+    }
+
+    function judgmentBadge(v) {
+      const m = STATUS_MAP[v] ? v : 'gray';
+      return '<span><span class="dot ' + m + '"></span>' + (STATUS_MAP[v] || STATUS_MAP.gray) + '</span>';
+    }
+
+    function renderTable(key) {
+      const el = document.getElementById('tbl-' + key);
+      if (!el || !current) return;
+      const cols = COLUMNS[key];
+      const rows = (current[key] || []).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+      let html = '<thead><tr>';
+      cols.forEach(c => { html += '<th>' + esc(c.label) + '</th>'; });
+      html += '<th style="width:32px;"></th></tr></thead><tbody>';
+      if (rows.length === 0) {
+        html += '<tr><td colspan="' + (cols.length + 1) + '" class="mr-empty">暂无数据，点击上方「+」添加</td></tr>';
+      } else {
+        rows.forEach((row, idx) => {
+          html += '<tr data-row>';
+          cols.forEach(c => {
+            const val = row[c.key] === null || row[c.key] === undefined ? '' : row[c.key];
+            html += '<td>';
+            if (c.type === 'select') {
+              html += '<select data-field="' + esc(c.key) + '">';
+              Object.keys(c.options).forEach(ok => {
+                html += '<option value="' + esc(ok) + '"' + (String(val) === ok ? ' selected' : '') + '>' + esc(c.options[ok]) + '</option>';
+              });
+              html += '</select>';
+            } else if (c.type === 'textarea') {
+              html += '<textarea data-field="' + esc(c.key) + '" rows="2">' + esc(val) + '</textarea>';
+            } else {
+              html += '<input type="text" data-field="' + esc(c.key) + '" value="' + attrEsc(val) + '" class="' + (c.cls || '') + '">';
+            }
+            html += '</td>';
+          });
+          html += '<td class="row-del" title="删除此行" onclick="delRow(this)">×</td></tr>';
+        });
+      }
+      html += '</tbody>';
+      el.innerHTML = html;
+    }
+
+    function addRow(key) {
+      if (!current) return;
+      const blank = {};
+      COLUMNS[key].forEach(c => { blank[c.key] = ''; });
+      current[key] = current[key] || [];
+      current[key].push(blank);
+      renderTable(key);
+    }
+
+    function delRow(td) {
+      td.closest('tr').remove();
+    }
+
+    function collectRows(key) {
+      const el = document.getElementById('tbl-' + key);
+      if (!el) return [];
+      const rows = [];
+      el.querySelectorAll('tbody tr[data-row]').forEach((tr, idx) => {
+        const obj = { sort_order: idx };
+        tr.querySelectorAll('[data-field]').forEach(inp => {
+          obj[inp.getAttribute('data-field')] = inp.value;
+        });
+        rows.push(obj);
+      });
+      return rows;
+    }
+
+    async function saveTab(key) {
+      if (!current) return;
+      const items = collectRows(key);
+      await api('/reports/' + current.report.id + '/' + (URL_KEY[key] || key), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items })
+      });
+      current[key] = items;
+      if (key === 'indicators' || key === 'dept_summary') renderCockpit();
+      toast('已保存 ' + key + '（' + items.length + ' 条）');
+    }
+
+    async function saveSummary() {
+      if (!current) return;
+      const summary = document.getElementById('summaryInput').value;
+      await api('/reports/' + current.report.id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ summary })
+      });
+      current.report.summary = summary;
+      toast('总结已保存');
+    }
+
+    async function createReport() {
+      const period = prompt('请输入报告周期（如 2026-11）：', '');
+      if (!period) return;
+      try {
+        const r = await api('/reports', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ period: period.trim(), title: period.trim() + ' 月度经营报告' })
+        });
+        toast('报告已创建');
+        await loadReports();
+        selectReport(r.id);
+      } catch (e) { toast(e.message, true); }
+    }
+
+    async function deleteReport() {
+      if (!current) return;
+      if (!confirm('确认删除「' + current.report.period + '」报告及其全部数据？此操作不可撤销。')) return;
+      await api('/reports/' + current.report.id, { method: 'DELETE' });
+      toast('已删除');
+      await loadReports();
+    }
+
+    // 页签切换
+    document.getElementById('mrTabs').addEventListener('click', function (e) {
+      const btn = e.target.closest('.mr-tab');
+      if (!btn) return;
+      document.querySelectorAll('.mr-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.mr-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('panel-' + btn.getAttribute('data-tab')).classList.add('active');
+    });
+
+    function toast(msg, isErr) {
+      if (typeof window.toast === 'function') { window.toast(msg); return; }
+      alert(msg);
+    }
+
+    loadReports();
+  </script>
+  <script src="brand.js"></script>
+  <script src="permission-check.js"></script>
+  <script>PermissionCheck.init();</script>
+  <script src="chat-widget.js"></script>
+  <script src="feedback-widget.js"></script>
+</body>
+</html>

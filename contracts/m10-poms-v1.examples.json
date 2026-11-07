@@ -1,0 +1,132 @@
+{
+  "contract_version": "M10-POMS.V1",
+  "workspace": {
+    "contract_version": "M10-POMS.V1",
+    "tenant_id": "EBMS",
+    "person_id": "ebms:user:2",
+    "ebms_user_id": 2,
+    "name": "李四",
+    "person_unmapped": false,
+    "positions": ["销售经理"],
+    "department": "销售部",
+    "role_codes": ["sales_manager", "sales"],
+    "policy_version": "ebms-m10-v1",
+    "expires_at": "2026-10-31T10:00:00.000Z",
+    "industry_pack_ref": "",
+    "portal_url": "http://localhost:4173/",
+    "widgets": [
+      {
+        "id": "future_todos",
+        "visible": true,
+        "count": 2,
+        "summary": {
+          "total": 2,
+          "pending": 1,
+          "in_progress": 1,
+          "awaiting_acceptance": 0,
+          "blocked": 0,
+          "overdue": 1,
+          "done": 0
+        }
+      },
+      { "id": "past_results", "visible": true, "count": 1 },
+      { "id": "personal_agent", "visible": false, "hint": "个人 Agent 由 AEOS Hub 提供，EBMS 不重复建设" }
+    ],
+    "actions": ["ebms.work_item.read", "ebms.work_item.start", "ebms.work_item.complete", "ebms.result.read", "ebms.portal.open"],
+    "source": "ebms"
+  },
+  "workItems": {
+    "contract_version": "M10-POMS.V1",
+    "items": [
+      {
+        "work_item_id": "ebms:sop_action:6",
+        "source_system": "M03",
+        "source_object_type": "SopAction",
+        "source_object_id": "6",
+        "title": "采购准交率告警：实际 49% vs 目标 90%，制定纠正措施",
+        "description": "采购准交率告警：实际 49% vs 目标 90%，制定纠正措施",
+        "display_status": "pending",
+        "priority": "P0",
+        "due_at": "2026-08-02T18:00:00+08:00",
+        "assignee_name": "",
+        "assignee_role": "PURCHASE_HEAD",
+        "evidence_refs": [],
+        "deep_link": "/sop.html?actionId=6",
+        "allowed_action_refs": ["ebms.work_item.start", "ebms.work_item.complete"],
+        "overdue": true,
+        "updated_at": "2026-07-30 11:08:32"
+      }
+    ],
+    "summary": {
+      "total": 1,
+      "pending": 1,
+      "in_progress": 0,
+      "awaiting_acceptance": 0,
+      "blocked": 0,
+      "overdue": 1,
+      "done": 0
+    },
+    "source": "ebms"
+  },
+  "results": {
+    "contract_version": "M10-POMS.V1",
+    "results": [
+      {
+        "result_id": "ebms:result:sop_action:1",
+        "source_system": "M03",
+        "source_object_type": "SopAction",
+        "source_object_id": "1",
+        "title": "采购准交率提升至 70%（当前 49%）",
+        "verification": "pending",
+        "evidence_refs": ["https://ebms.example.com/uploads/act-1.pdf"],
+        "verified_by": "",
+        "verified_at": "",
+        "occurred_at": "2026-08-16 09:00:00"
+      }
+    ],
+    "source": "ebms"
+  },
+  "feedback": {
+    "contract_version": "M10-POMS.V1",
+    "feedback_id": "fb-20260816-0001",
+    "idempotency_key": "m10:feedback:fb-20260816-0001",
+    "person_id": "ebms:user:2",
+    "ebms_user_id": 2,
+    "items": [
+      {
+        "work_item_id": "ebms:sop_action:6",
+        "source_object_type": "SopAction",
+        "source_object_id": "6",
+        "status": "done",
+        "evidence_refs": ["https://ebms.example.com/uploads/act-6.pdf"],
+        "remark": "已完成供应商交期复盘并锁定替代料。",
+        "completed_at": "2026-08-16T09:00:00+08:00"
+      }
+    ]
+  },
+  "feedbackResult": {
+    "contract_version": "M10-POMS.V1",
+    "result": "applied",
+    "feedback_id": "fb-20260816-0001",
+    "idempotency_key": "m10:feedback:fb-20260816-0001",
+    "applied": 1,
+    "skipped": 0,
+    "conflicts": 0,
+    "items": [
+      {
+        "work_item_id": "ebms:sop_action:6",
+        "source_object_type": "SopAction",
+        "source_object_id": "6",
+        "status": "applied",
+        "changes": {
+          "status": "CLOSED",
+          "evidence_url": "https://ebms.example.com/uploads/act-6.pdf",
+          "remark": "已完成供应商交期复盘并锁定替代料。",
+          "closed_at": "2026-08-16 09:00:00",
+          "updated_at": "2026-08-16 09:00:00"
+        }
+      }
+    ],
+    "source": "ebms"
+  }
+}

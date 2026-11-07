@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aeos.local/v1/principal-context",
+  "title": "PrincipalContextV1",
+  "schema_version": "1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenant_id", "source_system", "person_id", "trace_id", "idempotency_key", "schema_version", "issued_at", "expires_at", "authz_version"],
+  "properties": {
+    "tenant_id": {"type": "string", "minLength": 1}, "source_system": {"type": "string", "minLength": 1},
+    "person_id": {"type": "string", "minLength": 1}, "service_id": {"type": "string", "minLength": 1},
+    "subject_type": {"type": "string", "enum": ["USER", "SERVICE"]}, "roles": {"type": "array", "items": {"type": "string"}},
+    "capabilities": {"type": "array", "items": {"type": "string"}}, "authz_version": {"type": "integer", "minimum": 0},
+    "issued_at": {"type": "string", "format": "date-time"}, "expires_at": {"type": "string", "format": "date-time"},
+    "trace_id": {"type": "string", "minLength": 1}, "correlation_id": {"type": "string", "minLength": 1},
+    "idempotency_key": {"type": "string", "minLength": 1}, "schema_version": {"const": "1.0.0"}
+  }
+}

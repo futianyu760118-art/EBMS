@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getTable, ensureTable, now } = require('../db');
 const { requirePerm, getUserPermissions } = require('../auth-middleware');
+const { filterActivePersonnel } = require('../lib/m01-personnel-sync');
 
 ['org_departments', 'org_positions', 'org_personnel', 'org_personnel_perms', 'org_position_perms', 'org_position_roles', 'org_employee_orgs'].forEach(name => ensureTable(name));
 
@@ -72,7 +73,7 @@ router.get('/centers', requirePerm('org:view'), (req, res) => {
   const enriched = centers.map(c => {
     if (!c.department_id) return { ...c, descendant_department_ids: [], personnel_count: 0, work_role_stats: [] };
     const { ids } = collectCenterDescendantIds(c.department, depts);
-    const centerPersonnel = personnel.filter(p => p.department_id && ids.includes(p.department_id));
+    const centerPersonnel = filterActivePersonnel(personnel).filter(p => p.department_id && ids.includes(p.department_id));
     const wrStats = WORK_ROLES.map(wr => ({
       code: wr.code, name: wr.name, count: centerPersonnel.filter(p => (p.work_role || 'operator') === wr.code).length
     }));
@@ -95,7 +96,7 @@ router.get('/center-role-matrix', requirePerm('org:view'), (req, res) => {
     if (!c.department_id) return;
     const { ids } = collectCenterDescendantIds(c.department, depts);
     WORK_ROLES.forEach(wr => {
-      const matched = personnel.filter(p =>
+      const matched = filterActivePersonnel(personnel).filter(p =>
         p.department_id && ids.includes(p.department_id) && (p.work_role || 'operator') === wr.code
       );
       rows.push({
@@ -130,7 +131,8 @@ router.get('/centers/:departmentId/personnel', requirePerm('org:view'), (req, re
     const kw = String(keyword).toLowerCase();
     list = list.filter(p => (p.name || '').toLowerCase().includes(kw) || (p.emp_code || '').toLowerCase().includes(kw));
   }
-  if (status) list = list.filter(p => p.status === status);
+  if (status && status !== 'all') list = list.filter(p => p.status === status);
+  else list = filterActivePersonnel(list);
   const enriched = list.map(p => ({
     ...p,
     work_role: p.work_role || 'operator',
@@ -181,7 +183,8 @@ function enrichDepartment(dept, deptMap, personnelMap, positionsTable, personnel
     child_count: childDepts.length,
     child_names: childDepts.map(c => c.name),
     position_count: positionsAll.filter(p => Number(p.department_id) === Number(dept.id)).length,
-    personnel_count: personnelAll.filter(p => Number(p.department_id) === Number(dept.id)).length,
+    personnel_count: personnelAll.filter(p => Number(p.department_id) === Number(dept.id) && p.status === 'active').length,
+    inactive_personnel_count: personnelAll.filter(p => Number(p.department_id) === Number(dept.id) && p.status !== 'active').length,
     active_personnel_count: personnelAll.filter(p => Number(p.department_id) === Number(dept.id) && p.status === 'active').length,
     status: dept.status || 'active',
     sort: dept.sort || 0,
@@ -224,7 +227,8 @@ router.get('/departments', requirePerm('org:view'), (req, res) => {
   const positionsAll = positionsTable.all();
   const enriched = list.map(d => ({
     ...d,
-    personnel_count: personnelAll.filter(p => p.department_id === d.id).length,
+    personnel_count: personnelAll.filter(p => p.department_id === d.id && p.status === 'active').length,
+    inactive_personnel_count: personnelAll.filter(p => p.department_id === d.id && p.status !== 'active').length,
     position_count: positionsAll.filter(p => p.department_id === d.id).length,
     manager_name: d.manager_id ? (personnelAll.find(p => p.id === d.manager_id) || {}).name || '' : '',
     parent_name: d.parent_id ? (list.find(x => x.id === d.parent_id) || {}).name || '' : ''
@@ -249,7 +253,7 @@ router.get('/departments/:id', requirePerm('org:view'), (req, res) => {
   res.json({
     ...row,
     ...info,
-    personnel_list: personnelAll.filter(p => p.department_id === row.id).map(p => ({
+    personnel_list: personnelAll.filter(p => p.department_id === row.id && (req.query.status === 'all' || p.status === 'active')).map(p => ({
       id: p.id, name: p.name, emp_code: p.emp_code || '',
       work_role: p.work_role || 'operator', status: p.status || 'active'
     })),
@@ -524,7 +528,8 @@ router.get('/personnel', requirePerm('org:view'), (req, res) => {
   }
   if (department_id) list = list.filter(p => String(p.department_id) === String(department_id));
   if (position_id) list = list.filter(p => String(p.position_id) === String(position_id));
-  if (status) list = list.filter(p => p.status === status);
+  if (status && status !== 'all') list = list.filter(p => p.status === status);
+  else if (!status) list = filterActivePersonnel(list);
   if (work_role) list = list.filter(p => String(p.work_role || 'operator') === String(work_role));
   if (sync_exempt === '1') list = list.filter(p => !!p.sync_exempt);
   else if (sync_exempt === '0') list = list.filter(p => !p.sync_exempt);
@@ -875,18 +880,20 @@ router.get('/stats/summary', requirePerm('org:view'), (req, res) => {
   const positionsTable = getTable('org_positions');
   const personnelTable = getTable('org_personnel');
   const allPer = personnelTable.all();
+  const activePer = allPer.filter(p => p.status === 'active');
   const workRoleStats = WORK_ROLES.map(r => ({
     code: r.code,
     name: r.name,
-    count: allPer.filter(p => normalizeWorkRole(p.work_role) === r.code).length
+    count: activePer.filter(p => normalizeWorkRole(p.work_role) === r.code).length
   }));
   res.json({
     total_departments: departmentsTable.all().length,
     active_departments: departmentsTable.all().filter(d => d.status === 'active').length,
     total_positions: positionsTable.all().length,
     active_positions: positionsTable.all().filter(p => p.status === 'active').length,
-    total_personnel: allPer.length,
-    active_personnel: allPer.filter(p => p.status === 'active').length,
+    total_personnel: activePer.length,
+    active_personnel: activePer.length,
+    inactive_personnel: allPer.length - activePer.length,
     work_role_stats: workRoleStats
   });
 });

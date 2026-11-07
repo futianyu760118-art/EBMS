@@ -52,6 +52,7 @@ const TOP_LEVEL_GROUPS = [
 // 二级菜单：每条带 group 字段
 const sidebarItems = [
   { href: 'annual-plan.html',    label: '年度计划',     group: 'business', perm: 'annual-plan:view' },
+  { href: 'monthly-report.html', label: '月度经营报告', group: 'business', perm: 'monthly-report:view' },
   { href: 'amiba.html',          label: '阿米巴经营',   group: 'business', perm: 'amiba:view' },
   { href: 'expense.html',        label: '费用库',       group: 'business', perm: 'expense:view' },
   { href: 'labor.html',          label: '人工库',       group: 'business', perm: 'labor:view' },
@@ -87,6 +88,7 @@ const sidebarItems = [
   { href: 'test.html',           label: '自动测试',     group: 'system', perm: 'test:view' },
   { href: 'settings.html',       label: '系统设置',     group: 'system', perm: 'system:config' },
   { href: 'dashboard.html',      label: '仪表盘',       group: 'home', perm: null },
+  { href: 'm10.html',            label: '微系统',       group: 'home', perm: null },
   { href: 'im.html',            label: '消息中心',     group: 'home', perm: 'im:view' }
 ];
 
@@ -527,6 +529,7 @@ window.PermissionCheck = PermissionCheck;
 // 全局退出登录：所有页面右上角卡片 + 仪表盘原有按钮均调用此函数
 window.globalLogout = function () {
   try {
+    localStorage.removeItem('authToken');
     localStorage.removeItem('user');
     localStorage.removeItem('currentUserId');
     localStorage.removeItem('currentUser');

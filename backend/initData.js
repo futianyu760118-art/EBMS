@@ -534,7 +534,12 @@ const permissions = [
     { name: '删除阿米巴', code: 'amiba:delete', module: '阿米巴经营', description: '删除阿米巴记录', created_at: now() },
     { name: '审批阿米巴', code: 'amiba:audit', module: '阿米巴经营', description: '内部定价审批、争议仲裁', created_at: now() },
     { name: '核算阿米巴', code: 'amiba:calc', module: '阿米巴经营', description: '月度核算、目标拆解、结项核算', created_at: now() },
-    { name: '导出阿米巴', code: 'amiba:export', module: '阿米巴经营', description: '导出阿米巴经营数据', created_at: now() }
+    { name: '导出阿米巴', code: 'amiba:export', module: '阿米巴经营', description: '导出阿米巴经营数据', created_at: now() },
+    // 月度经营报告（M03 经营驾驶舱）
+    { name: '查看月度经营报告', code: 'monthly-report:view', module: '月度经营报告', description: '查看月度经营报告驾驶舱与明细', created_at: now() },
+    { name: '创建月度经营报告', code: 'monthly-report:create', module: '月度经营报告', description: '新建月度经营报告', created_at: now() },
+    { name: '编辑月度经营报告', code: 'monthly-report:edit', module: '月度经营报告', description: '编辑指标/决议/问题/决策', created_at: now() },
+    { name: '删除月度经营报告', code: 'monthly-report:delete', module: '月度经营报告', description: '删除月度经营报告', created_at: now() }
   ];
   // 增量补充缺失的权限（保留已存在的权限和已分配的角色权限）
   let permsAdded = 0;
@@ -595,6 +600,13 @@ const permissions = [
       // 所有非 admin 角色补授消息中心基础权限（IM 是基础沟通工具）
       if (role.code !== 'admin') {
         ['im:view', 'im:send'].forEach(c => _grant(role.id, c));
+      }
+      // 月度经营报告：与年度经营计划同可见性，财务/研发管理/销售管理角色补全权
+      if (rolePermCodes.has('annual-plan:view')) {
+        _grant(role.id, 'monthly-report:view');
+      }
+      if (isFinance || ['rd_manager', 'sales_manager'].indexOf(role.code) >= 0) {
+        ['monthly-report:view', 'monthly-report:create', 'monthly-report:edit', 'monthly-report:delete'].forEach(c => _grant(role.id, c));
       }
     });
     if (_rpAdded > 0) {
@@ -928,12 +940,18 @@ if (annualPermsAdded > 0) logger.info('年度经营计划角色权限补充完�
 // ===== 阿米巴经营管理：角色权限补充（增量，不覆盖用户已配置项）=====
 const amibaRolePerms = {
   admin: ['amiba:view','amiba:create','amiba:edit','amiba:delete','amiba:audit','amiba:calc','amiba:export'],
+  gm: ['amiba:view','amiba:create','amiba:edit','amiba:audit','amiba:calc','amiba:export'],
   sales_manager: ['amiba:view','amiba:create','amiba:edit','amiba:audit','amiba:calc','amiba:export'],
+  sales_director: ['amiba:view','amiba:create','amiba:edit','amiba:audit','amiba:calc','amiba:export'],
   rd_manager: ['amiba:view','amiba:create','amiba:edit','amiba:calc','amiba:export'],
   project_manager: ['amiba:view','amiba:create','amiba:edit','amiba:calc','amiba:export'],
   engineer: ['amiba:view','amiba:create','amiba:edit','amiba:calc'],
   purchase: ['amiba:view','amiba:create','amiba:edit'],
   finance: ['amiba:view','amiba:audit','amiba:export'],
+  cw1: ['amiba:view','amiba:audit','amiba:export'],
+  hr_manager: ['amiba:view','amiba:export'],
+  sales: ['amiba:view'],
+  sales_user: ['amiba:view'],
   viewer: ['amiba:view','amiba:export']
 };
 let amibaPermsAdded = 0;

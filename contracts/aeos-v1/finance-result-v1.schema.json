@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aeos.local/v1/finance-result",
+  "title": "FinanceResultV1",
+  "schema_version": "1.0.3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenant_id", "result_id", "source_system", "object_type", "object_id", "revision", "result_type", "status", "calculation_run_id", "input_snapshot_ref", "rule_version", "currency", "evidence_refs", "trace_id", "idempotency_key"],
+  "properties": {
+    "tenant_id": {"type": "string", "minLength": 1}, "result_id": {"type": "string", "minLength": 1}, "source_system": {"type": "string", "minLength": 1},
+    "object_type": {"type": "string", "minLength": 1}, "object_id": {"type": "string", "minLength": 1}, "revision": {"type": "integer", "minimum": 1},
+    "result_type": {"type": "string", "enum": ["REVENUE", "COST", "MARGIN", "AR_RISK", "CASH"]},
+    "status": {"type": "string", "enum": ["CALCULATED", "SUBMITTED", "VERIFIED", "CALCULATION_INCOMPLETE", "SUPERSEDED", "RESTATED"]},
+    "calculation_run_id": {"type": "string", "minLength": 1}, "input_snapshot_ref": {"type": "string", "minLength": 1}, "rule_version": {"type": "string", "minLength": 1},
+    "currency": {"type": "string", "pattern": "^[A-Z]{3}$"}, "fx_rate": {"type": "number", "exclusiveMinimum": 0}, "evidence_refs": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "verified_at": {"type": "string", "format": "date-time"}, "verified_by": {"type": "string", "minLength": 1}, "trace_id": {"type": "string", "minLength": 1}, "idempotency_key": {"type": "string", "minLength": 1},
+    "previous_result_id": {"type": "string", "minLength": 1}, "amount": {"type": "number"}
+  }
+}

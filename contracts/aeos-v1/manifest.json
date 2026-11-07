@@ -1,0 +1,20 @@
+{
+  "package": "AEOS Phase 1 contracts",
+  "package_version": "1.0.0",
+  "schemas": [
+    {"name": "audit-event-v1.schema.json", "version": "1.0.2", "sha256": "4ea008003701d54341e5d35a0195e2f689a20231def9a2b7c4b45b725f6c7809"},
+    {"name": "business-event-v1.schema.json", "version": "1.0.1", "sha256": "a862a87276d7632d96a93d6836e9407a4ff5569d17cd3db5b8c0698301b18491"},
+    {"name": "finance-result-v1.schema.json", "version": "1.0.3", "sha256": "eff8dd024a1597e768241e4f5077114f2eef6c642ee2be06e9f45806f4c0a5a4"},
+    {"name": "lead-intake-v1.schema.json", "version": "2.0.0", "sha256": "f263b6623286d39bfafda17b5b9355ad9d5c3f5fff4297693f91c7326ee2b9c8"},
+    {"name": "person-lifecycle-event-v1.schema.json", "version": "1.1.0", "sha256": "83227b069930b2785429f57324904cb240ac88eb58f5a24070427c58adfa62a6"},
+    {"name": "person-lifecycle-result-v1.schema.json", "version": "1.1.1", "sha256": "d2d81f8d5a5fca7479029b2454df601be6e6d6f991e9d6c81b42d79db3df2e0b"},
+    {"name": "principal-context-v1.schema.json", "version": "1.0.0", "sha256": "633b5aac7d8cd8252558c9938b728136ff399175a4ec028a9a65d09d04099fd4"},
+    {"name": "system-manifest-v1.schema.json", "version": "1.0.5", "sha256": "0834343943de09ade898fccdf6a6a92559588e0086d23228477c996fb78aec60"}
+  ],
+  "compatibility_policy": {
+    "MAJOR": "breaking required-field, semantic, or enum changes require a migration window",
+    "MINOR": "backward-compatible optional fields or capabilities",
+    "PATCH": "non-semantic corrections that preserve validation and meaning"
+  },
+  "generator": {"name": "scripts/validate-aeos-contracts.js", "algorithm": "sha256(LF-normalized file bytes)", "generated_at": "2026-11-01", "source": "AEOS gitee.com/ningbohengjianguangdian/AEOS contracts/v1"}
+}

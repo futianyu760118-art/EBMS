@@ -57,4 +57,13 @@ router.use('/im', require('./im'));
 // AEOS 销售数据同步通道（EBMS↔CRM 双向同步端点，契约见 contracts/aeos-contracts-v1.schema.json）
 router.use('/aeos', require('./aeos'));
 
+// M01 人员生命周期回写（离职后停用 EBMS 相关信息）
+router.use('/m01', require('./m01'));
+
+// M10 POMS 微系统对接（EBMS/M03 管理行动 → M10 执行面，契约见 contracts/m10-poms-v1.schema.json）
+router.use('/m10', require('./m10'));
+
+// 月度经营报告（M03 经营驾驶舱：核心指标/瓶颈/部门红黄绿/决议履约/问题诊断/决策清单）
+router.use('/monthly-report', require('./monthly-report'));
+
 module.exports = router;

@@ -143,9 +143,9 @@ function tabName(n){return {dashboard:'经营驾驶舱',org:'组织架构',targe
 // 各Tab操作流程与核算标准（不修改任何表头，仅作为说明面板注入Tab顶部）
 const _TAB_INFO={
 dashboard:{flow:'各模块录入数据 → 「经营核算」执行月度核算 → 「核算报表」生成各巴核算表 → 驾驶舱自动汇总展示',std:'降本达成率 = 实际节约额 ÷ 目标额；利润 = 总收入 − 总成本；累计降本 = 各巴已完成改善项目节约额之和'},
-org:{flow:'新增巴单元（一级巴=部门/二级巴=班组） → 绑定巴长（取自「系统组织模块」真实人员） → 一级巴设置关联销售员（用于归集订单收入）',std:'巴长必须为系统组织架构中在职人员；关联销售员的订单自动归入该巴收入；停用的巴不参与核算'},
+org:{flow:'「同步系统组织架构」（预览确认）从「系统管理/组织模块」同步部门关联/上下级层级/巴长/状态 → 也可手工新增巴单元并绑定巴长 → 一级巴设置关联销售员（用于归集订单收入）',std:'巴长取自系统组织模块真实人员；部门停用则对应巴自动停用；停用的巴不参与核算'},
 target:{flow:'设置公司年度降本总目标 → 「一键拆解」按权重分配到一级巴 → 各巴长签署电子责任状 → 月度跟踪达成率',std:'达成率 = 实际节约 ÷ 目标额；实际节约由「改善项目」结项数据自动汇总；达成率 < 80% 标红预警'},
-account:{flow:'点击「月度自动核算」→ 系统按巴关联的部门/销售员自动归集订单收入与成本 → 可手工调整 → 保存',std:'利润 = 收入 −（材料+能耗+人工+管理费+内部交易+其他成本）；本期节约 =（上期单位成本 − 本期单位成本）× 本期收入'},
+account:{flow:'「外部数据引入」把外部同步通道的订单→应收(AR)、采购单→应付(AP)（预览确认，未匹配不写）→ 点击「月度自动核算」按巴归集 → 可手工调整 → 保存',std:'收入=应收(AR)金额、材料成本=应付(AP)金额，无AR/AP时回退订单/询价；利润 = 收入 −（材料+能耗+人工+管理费+内部交易+其他成本）；本期节约 =（上期单位成本 − 本期单位成本）× 本期收入'},
 price:{flow:'从物料库检索取基数（物料代码/名称/单位/单价） → 设置系数 → 系统自动算内部单价（基数×系数） → 提交审核 → 审批通过后生效',std:'内部单价 = 物料库单价（基数）× 系数；审核流程：财务提交 → 推行办审核 → 委员会审批 → 生效后计入核算；支持 Excel 导入/导出'},
 standard:{flow:'选择部门（巴）+ 方向（收入/支出） → 从物料库选物料（自动带出单价基数） → 设置系数 → 自动算标准价 → 可批量生成',std:'标准价 = 物料库单价 × 系数；标准金额 = 标准价 × 标准数量；收入标准=该巴对外提供服务收费；支出标准=该巴接受其他巴服务付费'},
 trade:{flow:'选择提供方巴/接收方巴 → 填写服务编号 → 点「查询定价清单带价」自动带出单价 → 填数量 → 保存 → 点「结算」计入核算',std:'总金额 = 数量 × 单价；服务编号关联定价清单自动带价；仅「已结算」的交易计入经营核算与价值总表；可按巴切换子表查看'},
@@ -293,18 +293,57 @@ async function saveOrg(id){const data=readForm(orgFields);if(!data.amiba_name)re
 async function delOrg(id){if(!confirm('确定删除该巴单元？'))return;await delJson(`${API}/org/${id}`);loadOrg()}
 async function bindForm(id){await ensureOrgOpts();const list=await getJson(`${API}/org/list?limit=999`);const o=(list.data||[]).find(x=>x.id===id);const {pers}=orgSelectOpts();const box=document.getElementById('formBox');box.innerHTML=`<div style="display:flex;justify-content:space-between;margin-bottom:12px"><h3>绑定巴长 - ${esc(o.amiba_name)}</h3><span onclick="closeForm()" style="cursor:pointer;font-size:24px;color:#999">&times;</span></div>${field(['charge_personnel_id','巴长（系统人员）','select',pers],o)}<div style="text-align:right;margin-top:10px"><button class="btn b2" onclick="saveBind(${id})">保存</button></div>`;openForm()}
 async function saveBind(id){const el=document.getElementById('ff_charge_personnel_id');const pid=el?Number(el.value)||0:0;await postJson(`${API}/org/${id}/bindUser`,{charge_personnel_id:pid});closeForm();loadOrg()}
-// 从系统组织架构同步：拉取 org_departments 活跃部门，智能匹配/补建巴单元
+// 从系统组织架构同步：先预览（dry_run）再确认写入；同步部门关联/层级/巴长/状态
 async function syncOrg(){
-  if(!confirm('从系统组织架构同步部门到阿米巴？\n\n将执行：\n 读取系统「组织管理」中所有活跃部门\n 智能匹配已有巴（按 department_id 或名称）→ 补充关联\n 未匹配的部门自动创建巴单元（含部门负责人→巴长）\n 已有巴单元不会被删除，仅更新关联信息'))return;
+  let pre;
+  try{ pre=await postJson(`${API}/org/sync`,{dry_run:true}); }catch(e){return alert('同步预览失败：'+e.message)}
+  if(pre.error)return alert(pre.error);
+  const msg=[
+    '将从「系统管理/组织模块」同步调整阿米巴组织：','',
+    `系统部门：${pre.total_departments}（活跃 ${pre.active_departments}）`,
+    `预计 新建 ${pre.created}、更新 ${pre.updated}、停用 ${pre.deactivated}、启用 ${pre.reactivated}、无变化 ${pre.skipped}`,
+    '',
+    '同步内容：部门关联、名称、上下级(层级)、巴长(部门负责人)、状态(部门停用→巴停用)。','',
+    '确认写入？'
+  ].join('\n');
+  if(!confirm(msg))return;
   try{
-    const j=await postJson(`${API}/org/sync`,{});
+    const j=await postJson(`${API}/org/sync`,{dry_run:false});
     if(j.error)return alert(j.error);
-    // 展示同步详情
-    const newRows=(j.details||[]).filter(d=>d.action==='新建').map(d=>' '+d.amiba+' ['+d.type+']').join('\n');
-    const updRows=(j.details||[]).filter(d=>d.action==='更新').map(d=>' '+d.amiba+' ← '+d.dept+' ('+d.changes.join(',')+')').join('\n');
-    alert(j.message+(newRows?'\n\n新建巴单元：\n'+newRows.slice(0,500):'')+(updRows?'\n\n更新关联：\n'+updRows.slice(0,500):''));
+    const detail=(j.details||[]).slice(0,40).map(d=>
+      `  [${d.action}] ${d.amiba}${d.dept&&d.dept!==d.amiba?' ← '+d.dept:''}${d.changes&&d.changes.length?' ('+d.changes.join(',')+')':''}`
+    ).join('\n');
+    alert(j.message+(detail?'\n\n明细：\n'+detail:''));
     loadOrg();
   }catch(e){alert('同步失败：'+e.message)}
+}
+
+// 外部同步通道数据引入：订单→应收AR、采购单→应付AP、物料→定价基数（预览确认，未匹配不写）
+async function externalImport(){
+  let pre;
+  try{ pre=await getJson(`${API}/external/preview`); }catch(e){return alert('预览失败：'+e.message)}
+  if(pre.error)return alert(pre.error);
+  const sm=pre.summary||{}, p=pre.plan||{};
+  const lines=(arr,fn)=>((arr||[]).slice(0,8).map(fn).join('\n'));
+  const msg=[
+    '外部同步通道数据引入预览（未写入）：','',
+    `订单 orders → 应收AR：命中 ${(sm.orders||{}).matched||0} / 共 ${(sm.orders||{}).total||0}，未匹配 ${(sm.orders||{}).unmatched||0}，已存在跳过 ${(sm.orders||{}).skipped||0}`,
+    lines(p.orders&&p.orders.matched,x=>`  √ ${x.document_no} ${x.customer_name||''} ¥${yuan2(x.amount)} → ${x.amiba_name}（${x.reason}）`),
+    lines(p.orders&&p.orders.unmatched_samples,x=>`  × ${x.document_no} ${x.customer||''} ¥${yuan2(x.amount)} 未匹配`),'',
+    `采购单 purchase_orders → 应付AP：命中 ${(sm.purchase_orders||{}).matched||0} / 共 ${(sm.purchase_orders||{}).total||0}，未匹配 ${(sm.purchase_orders||{}).unmatched||0}，已存在跳过 ${(sm.purchase_orders||{}).skipped||0}`,
+    lines(p.purchase_orders&&p.purchase_orders.matched,x=>`  √ ${x.document_no} ${x.supplier_name||''} ¥${yuan2(x.amount)} → ${x.amiba_name}（${x.reason}）`),
+    lines(p.purchase_orders&&p.purchase_orders.unmatched_samples,x=>`  × ${x.document_no} ${x.supplier||''} ¥${yuan2(x.amount)} 未匹配`),'',
+    `物料 materials → 定价基数：内部定价 ${(sm.materials||{}).trade_prices||0} 条、收支标准 ${(sm.materials||{}).dept_standards||0} 条待回填`,'',
+    `合计可写入 ${sm.matched_total||0} 条，未匹配 ${sm.unmatched_total||0} 条（不写入）。`,'',
+    '确认执行引入？'
+  ].filter(Boolean).join('\n');
+  if(!confirm(msg))return;
+  try{
+    const j=await postJson(`${API}/external/import`,{});
+    if(j.error)return alert(j.error);
+    alert(j.message||'引入完成');
+    loadAccount();
+  }catch(e){alert('引入失败：'+e.message)}
 }
 
 // ===== 降本目标 =====
@@ -349,11 +388,11 @@ async function loadAccount(){
     <div class="cardx"><div class="n" style="color:#e67e22">¥${yuan2(apSm.total_amount||0)}</div><div class="l">应付总额(AP)  按应付确认成本</div></div>
     <div class="cardx"><div class="n" style="color:#e74c3c">¥${yuan2(apSm.outstanding||0)}</div><div class="l">未付欠款</div></div>
   </div>
-  <div class="sb"><button class="btn b5" onclick="runCalc()" data-perm="amiba:calc"> ${year()}年${month()===''?'全年':month()+'月'}月度自动核算</button><button class="btn b2" onclick="accountForm()" data-perm="amiba:calc">手工录入</button><button class="btn b5" onclick="exportExcel('${API}/account/export?year=${year()}${month()!==''?'&month='+month():''}')" data-perm="amiba:export">导出Excel</button><span style="margin-left:auto;color:#999;font-size:12px">收入=应收(AR)金额  材料成本=应付(AP)金额；无AR/AP时回退订单/询价推算</span></div>
+  <div class="sb"><button class="btn b5" onclick="runCalc()" data-perm="amiba:calc"> ${year()}年${month()===''?'全年':month()+'月'}月度自动核算</button><button class="btn b2" onclick="accountForm()" data-perm="amiba:calc">手工录入</button><button class="btn b3" onclick="externalImport()" data-perm="amiba:edit">外部数据引入（订单/采购/物料）</button><button class="btn b5" onclick="exportExcel('${API}/account/export?year=${year()}${month()!==''?'&month='+month():''}')" data-perm="amiba:export">导出Excel</button><span style="margin-left:auto;color:#999;font-size:12px">收入=应收(AR)金额  材料成本=应付(AP)金额；无AR/AP时回退订单/询价推算</span></div>
   ${renderTable(cols,list.data||[],cols.length)}
-  <h3 style="margin:18px 0 8px"> 应收单据（AR  来源：外部API /api/external/receive → amiba_ar）</h3>
+  <h3 style="margin:18px 0 8px"> 应收单据（AR  来源：外部API 回传 / 外部同步通道订单引入 → amiba_ar）</h3>
   ${renderTable(arCols,arList.data||[],arCols.length)}
-  <h3 style="margin:18px 0 8px"> 应付单据（AP  来源：外部API /api/external/receive → amiba_ap）</h3>
+  <h3 style="margin:18px 0 8px"> 应付单据（AP  来源：外部API 回传 / 外部同步通道采购单引入 → amiba_ap）</h3>
   ${renderTable(apCols,apList.data||[],apCols.length)}`;
   applyPerms();
 }

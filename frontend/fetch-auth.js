@@ -10,6 +10,30 @@
 (function () {
   if (window.__fetchAuthInstalled) return;
   window.__fetchAuthInstalled = true;
+
+  // 令牌失效/未登录时的兜底：清理过期凭据并回到登录页，避免页面停留在 401 状态。
+  // 排除登录接口本身（密码错误也返回 401，不应触发跳转）。
+  var _handleUnauthorized = (function () {
+    var _redirecting = false;
+    return function () {
+      if (_redirecting) return;
+      _redirecting = true;
+      try {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        localStorage.removeItem('currentUserId');
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('lms_active_group');
+      } catch (_) {}
+      window.location.href = 'index.html';
+    };
+  })();
+
+  function _isLoginRequest(input) {
+    var url = typeof input === 'string' ? input : (input && input.url) || '';
+    return /\/api\/users\/login\b/.test(url);
+  }
+
   var _fetch = window.fetch;
   window.fetch = function (input, init) {
     var uid = localStorage.getItem('currentUserId');
@@ -27,6 +51,14 @@
     if (token && !headers['Authorization']) headers['Authorization'] = 'Bearer ' + token;
     if (uid && !headers['x-user-id']) headers['x-user-id'] = uid;
     init.headers = headers;
-    return _fetch.call(this, input, init);
+
+    var p = _fetch.call(this, input, init);
+    if (!p || typeof p.then !== 'function') return p;
+    return p.then(function (res) {
+      if (res && res.status === 401 && !_isLoginRequest(input)) {
+        _handleUnauthorized();
+      }
+      return res;
+    });
   };
 })();

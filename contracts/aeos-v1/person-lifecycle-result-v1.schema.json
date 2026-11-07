@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aeos.local/v1/person-lifecycle-result",
+  "title": "PersonLifecycleResultV1",
+  "schema_version": "1.1.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "target_system", "status", "changed", "received_at"],
+  "properties": {
+    "event_id": {"type": "string", "minLength": 1},
+    "target_system": {"type": "string", "minLength": 1},
+    "status": {"enum": ["synced", "skipped", "pending_confirmation", "retrying", "failed"]},
+    "changed": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "received_at": {"type": "string", "format": "date-time"},
+    "reason": {"type": "string"},
+    "last_error_code": {"type": "string"}
+  }
+}

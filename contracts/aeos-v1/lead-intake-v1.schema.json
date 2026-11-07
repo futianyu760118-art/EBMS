@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aeos.local/v1/lead-intake",
+  "title": "LeadIntakeV1",
+  "schema_version": "2.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "intake_id", "source_system", "submitted_at", "contact", "interest", "consent", "idempotency_key"],
+  "properties": {
+    "contract_version": {"type": "string", "const": "LeadIntakeV1"},
+    "intake_id": {"type": "string", "minLength": 1}, "source_system": {"type": "string", "const": "PUBLIC_BFF"}, "submitted_at": {"type": "string", "format": "date-time"},
+    "contact": {"type": "object", "additionalProperties": false, "required": ["name", "email_or_phone"], "properties": {"name": {"type": "string", "minLength": 1}, "email_or_phone": {"type": "string", "minLength": 3}}},
+    "interest": {"type": "string", "minLength": 1}, "message": {"type": "string"}, "consent": {"type": "object", "additionalProperties": false, "required": ["granted", "version", "purpose", "retention_until"], "properties": {"granted": {"const": true}, "version": {"type": "string", "minLength": 1}, "purpose": {"type": "string", "minLength": 1}, "retention_until": {"type": "string", "format": "date-time"}, "deletion_requested": {"type": "boolean"}}},
+    "trace_id": {"type": "string", "minLength": 1}, "idempotency_key": {"type": "string", "minLength": 1}, "tenant_id": {"type": "string", "minLength": 1}
+  }
+}

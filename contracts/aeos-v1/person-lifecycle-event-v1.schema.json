@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aeos.local/v1/person-lifecycle-event",
+  "title": "PersonLifecycleEventV1",
+  "schema_version": "1.1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenant_id", "event_id", "event_type", "event_version", "source_system", "object_type", "object_id", "revision", "occurred_at", "effective_at", "correlation_id", "trace_id", "idempotency_key", "person", "status"],
+  "properties": {
+    "tenant_id": {"type": "string", "minLength": 1},
+    "event_id": {"type": "string", "minLength": 1},
+    "event_type": {"enum": ["person.offboarded", "person.reinstated"]},
+    "event_version": {"const": 1},
+    "source_system": {"type": "string", "minLength": 1},
+    "object_type": {"const": "Person"},
+    "object_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "effective_at": {"type": "string", "format": "date-time"},
+    "correlation_id": {"type": "string", "minLength": 1},
+    "trace_id": {"type": "string", "minLength": 1},
+    "idempotency_key": {"type": "string", "minLength": 1},
+    "person": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["person_id", "emp_code"],
+      "properties": {"person_id": {"type": "string", "minLength": 1}, "emp_code": {"type": "string", "minLength": 1}}
+    },
+    "status": {"enum": ["active", "inactive"]},
+    "employment_action": {"enum": ["offboard", "rehire", "reinstate"]},
+    "evidence_refs": {"type": "array", "items": {"type": "string"}},
+    "occurred_by": {"type": "string", "minLength": 1}
+  }
+}

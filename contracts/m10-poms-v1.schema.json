@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ebms.local/contracts/m10-poms-v1.schema.json",
+  "title": "M10 POMS x EBMS (M03) integration contract",
+  "description": "EBMS 管理侧工作项向 M10 POMS 微系统输出；M10 执行反馈回写 EBMS。契约版本 M10-POMS.V1。",
+  "contract_version": "M10-POMS.V1",
+  "$defs": {
+    "personRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "person_id": { "type": "string", "description": "M10 侧人员标识；EBMS 侧可通过 m10_person_link 映射" },
+        "m10_person_id": { "type": "string" },
+        "ebms_user_id": { "type": ["integer", "string"], "description": "EBMS 用户 ID；也接受用户名" },
+        "emp_code": { "type": "string", "description": "EBMS 组织人员工号" },
+        "name": { "type": "string" }
+      }
+    },
+    "widget": {
+      "type": "object",
+      "required": ["id", "visible"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "enum": ["future_todos", "past_results", "personal_agent"] },
+        "visible": { "type": "boolean" },
+        "count": { "type": "integer", "minimum": 0 },
+        "hint": { "type": "string" },
+        "summary": { "$ref": "#/$defs/summary" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["total", "pending", "in_progress", "awaiting_acceptance", "blocked", "overdue", "done"],
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "pending": { "type": "integer", "minimum": 0 },
+        "in_progress": { "type": "integer", "minimum": 0 },
+        "awaiting_acceptance": { "type": "integer", "minimum": 0 },
+        "blocked": { "type": "integer", "minimum": 0 },
+        "overdue": { "type": "integer", "minimum": 0 },
+        "done": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "workspace": {
+      "type": "object",
+      "required": [
+        "contract_version", "tenant_id", "person_id", "name", "policy_version",
+        "expires_at", "widgets", "actions", "source"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "contract_version": { "const": "M10-POMS.V1" },
+        "tenant_id": { "type": "string" },
+        "person_id": { "type": "string" },
+        "ebms_user_id": { "type": ["integer", "null"] },
+        "name": { "type": "string" },
+        "person_unmapped": { "type": "boolean" },
+        "positions": { "type": "array", "items": { "type": "string" } },
+        "department": { "type": "string" },
+        "role_codes": { "type": "array", "items": { "type": "string" } },
+        "policy_version": { "type": "string" },
+        "expires_at": { "type": "string" },
+        "industry_pack_ref": { "type": "string" },
+        "portal_url": { "type": "string" },
+        "widgets": { "type": "array", "items": { "$ref": "#/$defs/widget" } },
+        "actions": { "type": "array", "items": { "type": "string" } },
+        "source": { "const": "ebms" }
+      }
+    },
+    "workItem": {
+      "type": "object",
+      "required": [
+        "work_item_id", "source_system", "source_object_type", "source_object_id",
+        "title", "display_status", "allowed_action_refs"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "work_item_id": { "type": "string", "pattern": "^ebms:[a-z_]+:.+$" },
+        "source_system": { "const": "M03" },
+        "source_object_type": { "enum": ["SopAction", "AiAction", "ChatActionItem"] },
+        "source_object_id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "display_status": {
+          "enum": ["pending", "in_progress", "awaiting_acceptance", "blocked", "done", "cancelled"]
+        },
+        "priority": { "type": "string" },
+        "due_at": { "type": ["string", "null"] },
+        "assignee_name": { "type": "string" },
+        "assignee_role": { "type": "string" },
+        "evidence_refs": { "type": "array", "items": { "type": "string" } },
+        "deep_link": { "type": "string", "description": "EBMS 页面相对地址，用于 M10 跳回原单据" },
+        "allowed_action_refs": { "type": "array", "items": { "type": "string" } },
+        "overdue": { "type": "boolean" },
+        "updated_at": { "type": "string" }
+      }
+    },
+    "workItemList": {
+      "type": "object",
+      "required": ["contract_version", "items", "source"],
+      "additionalProperties": true,
+      "properties": {
+        "contract_version": { "const": "M10-POMS.V1" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/workItem" } },
+        "summary": { "$ref": "#/$defs/summary" },
+        "source": { "const": "ebms" },
+        "person_unmapped": { "type": "boolean" },
+        "hint": { "type": "string" }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": ["result_id", "source_system", "source_object_type", "source_object_id", "verification", "evidence_refs"],
+      "additionalProperties": true,
+      "properties": {
+        "result_id": { "type": "string", "pattern": "^ebms:result:.+$" },
+        "source_system": { "const": "M03" },
+        "source_object_type": { "enum": ["SopAction", "AiAction", "ChatActionItem"] },
+        "source_object_id": { "type": "string" },
+        "title": { "type": "string" },
+        "verification": { "enum": ["verified", "pending"] },
+        "evidence_refs": { "type": "array", "items": { "type": "string" } },
+        "verified_by": { "type": "string" },
+        "verified_at": { "type": "string" },
+        "occurred_at": { "type": "string" }
+      }
+    },
+    "resultList": {
+      "type": "object",
+      "required": ["contract_version", "results", "source"],
+      "additionalProperties": true,
+      "properties": {
+        "contract_version": { "const": "M10-POMS.V1" },
+        "results": { "type": "array", "items": { "$ref": "#/$defs/result" } },
+        "source": { "const": "ebms" },
+        "person_unmapped": { "type": "boolean" },
+        "hint": { "type": "string" }
+      }
+    },
+    "feedbackItem": {
+      "type": "object",
+      "required": ["work_item_id", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "work_item_id": { "type": "string", "pattern": "^ebms:[a-z_]+:.+$" },
+        "source_object_type": { "enum": ["SopAction", "AiAction", "ChatActionItem"] },
+        "source_object_id": { "type": "string" },
+        "status": {
+          "enum": ["pending", "in_progress", "awaiting_acceptance", "blocked", "done", "cancelled"]
+        },
+        "evidence_refs": { "type": "array", "maxItems": 50, "items": { "type": "string" } },
+        "remark": { "type": "string", "maxLength": 4000 },
+        "completed_at": { "type": "string" }
+      }
+    },
+    "feedback": {
+      "type": "object",
+      "required": ["feedback_id", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": { "const": "M10-POMS.V1" },
+        "feedback_id": { "type": "string", "maxLength": 128 },
+        "idempotency_key": { "type": "string", "maxLength": 160 },
+        "person_id": { "type": "string" },
+        "ebms_user_id": { "type": ["integer", "string"] },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/feedbackItem" }
+        }
+      }
+    },
+    "feedbackResult": {
+      "type": "object",
+      "required": ["contract_version", "result", "feedback_id", "applied", "skipped", "conflicts", "items"],
+      "additionalProperties": true,
+      "properties": {
+        "contract_version": { "const": "M10-POMS.V1" },
+        "result": { "enum": ["applied", "partial", "skipped", "conflict"] },
+        "feedback_id": { "type": "string" },
+        "idempotency_key": { "type": "string" },
+        "duplicate": { "type": "boolean" },
+        "applied": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "conflicts": { "type": "integer", "minimum": 0 },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["work_item_id", "status"],
+            "properties": {
+              "work_item_id": { "type": "string" },
+              "source_object_type": { "type": "string" },
+              "source_object_id": { "type": "string" },
+              "status": { "enum": ["applied", "skipped", "conflict", "forbidden"] },
+              "reason": { "type": "string" },
+              "changes": { "type": "object" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

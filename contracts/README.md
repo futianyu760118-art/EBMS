@@ -27,3 +27,10 @@ Fact → Event → Decision → Action → Result → Evidence
 - evidence_ids（适用时）
 
 不得把任意路由的临时 JSON 返回直接当成跨域正式契约。
+
+## 当前契约
+
+| 契约 | 文件 | 说明 |
+|---|---|---|
+| AEOS 销售数据同步 V1 | `aeos-contracts-v1.schema.json` | EBMS ↔ CRM/M05 双向同步 |
+| M10 POMS 微系统 V1 | `m10-poms-v1.schema.json` | EBMS/M03 管理行动 ↔ M10 执行面（工作台、工作项、结果、反馈） |

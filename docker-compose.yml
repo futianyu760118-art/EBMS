@@ -28,6 +28,17 @@ services:
       - EBMS_AEOS_FLUSH_INTERVAL_MS=${EBMS_AEOS_FLUSH_INTERVAL_MS:-300000}
       # 切流后核价→报价库自动同步默认停用（CRM 主写）；仅回滚演练置 1
       - EBMS_QUOTE_AUTOSYNC=${EBMS_QUOTE_AUTOSYNC:-0}
+      # M01 已审批离职结果回写 EBMS；必须与 M01 使用同一个令牌
+      - M01_EBMS_SYNC_TOKEN=${M01_EBMS_SYNC_TOKEN:?set M01_EBMS_SYNC_TOKEN in .env}
+      # ---- M10 POMS 微系统对接（EBMS/M03 管理行动 → M10 执行面）----
+      # M10 机器通道 Bearer 令牌；未配置时 /api/m10/partner/* 返回 503（fail-closed）
+      - M10_PARTNER_TOKEN=${M10_PARTNER_TOKEN}
+      # M10 门户地址（非机密，供 EBMS「微系统」页面跳转）
+      - M10_PORTAL_URL=${M10_PORTAL_URL:-}
+      # ---- AEOS 人员生命周期同步（Phase 1 统一契约，契约见 contracts/aeos-v1/）----
+      # 端点 /internal/aeos/person-lifecycle（M02 EDP 分发 → EBMS adapter）；HMAC-SHA256 签名。
+      # 未配置时端点 fail-closed 返回 503；代码内回退 M01_EBMS_SYNC_TOKEN。
+      - AEOS_PERSON_LIFECYCLE_SECRET=${AEOS_PERSON_LIFECYCLE_SECRET:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # always：无论退出码如何都自动拉起，避免进程消失后页面长期打不开

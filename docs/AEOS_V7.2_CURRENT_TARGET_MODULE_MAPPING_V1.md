@@ -3,6 +3,7 @@
 | 当前能力/路由 | 目标模块 | 当前处理 |
 |---|---|---|
 | dashboard | M03 EBMS | 保留并改造成 Result/Exception/Decision/Evidence 工作面 |
+| m10（微系统工作台） | M10 POMS | 新增对接：M03 提供 Action/Result，M10 回写执行反馈，不复制事实 |
 | annual-plan | M03 EBMS | 保留，目标与行动闭环化 |
 | report | M03 EBMS | 保留 |
 | sop | M03A 产销自治 | 逻辑隔离，后续独立服务 |

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.aeos.local/v1/business-event",
+  "title": "BusinessEventV1",
+  "schema_version": "1.0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tenant_id", "event_id", "event_type", "source_system", "object_type", "object_id", "revision", "occurred_at", "trace_id", "idempotency_key", "owner_system", "payload"],
+  "properties": {
+    "tenant_id": {"type": "string", "minLength": 1}, "event_id": {"type": "string", "minLength": 1}, "event_type": {"type": "string", "minLength": 1},
+    "source_system": {"type": "string", "minLength": 1}, "object_type": {"type": "string", "minLength": 1}, "object_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 1}, "occurred_at": {"type": "string", "format": "date-time"}, "trace_id": {"type": "string", "minLength": 1},
+    "correlation_id": {"type": "string", "minLength": 1}, "causation_id": {"type": "string", "minLength": 1}, "idempotency_key": {"type": "string", "minLength": 1},
+    "owner_system": {"type": "string", "minLength": 1}, "payload": {"type": "object", "additionalProperties": true},
+    "evidence_refs": {"type": "array", "items": {"type": "string"}}
+  }
+}

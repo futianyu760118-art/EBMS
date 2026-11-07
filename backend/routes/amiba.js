@@ -369,17 +369,28 @@ router.post('/org/:id/bindUser', requirePerm(PERM_EDIT), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 同步系统组织架构：从 org_departments 拉取部门，智能匹配/补建阿米巴巴单元
+// 同步系统组织架构：从 org_departments 拉取部门，智能匹配/补建/调整阿米巴巴单元
 // 匹配规则：1) department_id 已关联  2) 名称去后缀(巴/部/中心/车间/组)后相同  3) 名称包含关系
-// 未匹配的活跃部门自动创建巴单元，并绑定部门ID + 部门负责人
+// 同步内容：部门关联、名称、上下级(parent_id/层级)、巴长(部门负责人)、状态(部门停用→巴停用)
+// 支持 dry_run=true 仅预览不写入；未匹配的活跃部门才新建，停用部门不新建
 router.post('/org/sync', requirePerm(PERM_EDIT), async (req, res) => {
   try {
     const orgTable = getTable('amiba_org');
+    const dryRun = req.body.dry_run === true || req.body.dryRun === true;
+    const syncManager = req.body.sync_manager !== false;
+    const syncStatus = req.body.sync_status !== false;
+    const rebuildParent = req.body.rebuild_parent !== false;
+
     let departments = [];
     try {
       const dt = getTable('org_departments'); dt._invalidate();
-      departments = dt.all().filter(d => d.status !== 'inactive' && d.status !== '停用');
+      departments = dt.all();
     } catch (e) { return res.status(400).json({ error: '系统组织模块数据不可用：' + e.message }); }
+
+    const isActiveDept = (d) => !(s(d.status) === 'inactive' || s(d.status) === '停用' || s(d.status) === 'disabled');
+    const deptById = new Map(departments.map(d => [Number(d.id), d]));
+    const activeDepts = departments.filter(isActiveDept);
+    const activeDeptIds = new Set(activeDepts.map(d => Number(d.id)));
 
     // 推断巴类型
     const inferType = (name) => {
@@ -393,20 +404,53 @@ router.post('/org/sync', requirePerm(PERM_EDIT), async (req, res) => {
     };
     // 名称归一化：去掉常见后缀
     const normName = (name) => s(name).replace(/巴$|部$|中心$|车间$|组$|科$|室$|课$/g, '').trim();
+    // 部门树深度（用于先建父再建子）
+    const depthOf = (d) => {
+      let depth = 0, cur = d; const seen = new Set();
+      while (cur && cur.parent_id && deptById.has(Number(cur.parent_id)) && !seen.has(cur.id)) {
+        seen.add(cur.id); cur = deptById.get(Number(cur.parent_id)); depth++;
+        if (depth > 20) break;
+      }
+      return depth;
+    };
+    const sortedDepts = activeDepts.slice().sort((a, b) => depthOf(a) - depthOf(b) || n(a.sort) - n(b.sort));
 
-    const amibas = readAll('amiba_org');
-    let created = 0, updated = 0, skipped = 0;
+    const amibas = readAll('amiba_org').slice();
+    const byDeptId = new Map();
+    amibas.forEach(o => { const id = Number(o.department_id); if (id && !byDeptId.has(id)) byDeptId.set(id, o); });
+
+    let created = 0, updated = 0, skipped = 0, deactivated = 0, reactivated = 0;
     const details = [];
 
-    for (const dept of departments) {
+    // 1) 部门停用 → 对应巴停用（仅处理已按 department_id 关联的巴）
+    if (syncStatus) {
+      for (const o of amibas) {
+        const did = Number(o.department_id);
+        if (did && deptById.has(did) && !activeDeptIds.has(did) && s(o.status) !== '停用') {
+          details.push({ action: '停用', amiba: o.amiba_name, dept: s((deptById.get(did) || {}).name) });
+          if (!dryRun) { await orgTable.update(o.id, { status: '停用', updated_at: now() }); o.status = '停用'; }
+          deactivated++;
+        }
+      }
+    }
+
+    // 解析部门负责人 → 巴长
+    const resolveManager = (dept) => {
+      let name = s(dept.manager_name), pid = 0, uid = 0;
+      if (name) {
+        const p = resolvePersonnel(name);
+        if (p) { pid = p.id; uid = p.linked_user_id || 0; name = p.name; }
+      }
+      return { pid, uid, name };
+    };
+
+    for (const dept of sortedDepts) {
       const deptName = s(dept.name);
       const deptId = n(dept.id);
       const normDept = normName(deptName);
-      // 1) 已通过 department_id 关联
+      // 1) 已通过 department_id 关联  2) 名称归一化  3) 名称包含关系（双向）
       let matched = amibas.find(o => Number(o.department_id) === deptId);
-      // 2) 名称归一化匹配
       if (!matched) matched = amibas.find(o => normName(o.amiba_name) === normDept && normDept);
-      // 3) 名称包含关系（双向）
       if (!matched) {
         matched = amibas.find(o => {
           const normAmiba = normName(o.amiba_name);
@@ -414,54 +458,360 @@ router.post('/org/sync', requirePerm(PERM_EDIT), async (req, res) => {
         });
       }
 
-      // 查找部门负责人
-      let managerPersonnelId = 0, managerName = s(dept.manager_name);
-      if (managerName) {
-        const person = resolvePersonnel(managerName);
-        if (person) { managerPersonnelId = person.id; managerName = person.name; }
+      const hasParentDept = !!(dept.parent_id && deptById.has(Number(dept.parent_id)));
+      const expectedLevel = hasParentDept ? 2 : 1;
+      let parentAmibaId = 0;
+      if (hasParentDept) {
+        const p = byDeptId.get(Number(dept.parent_id));
+        if (p && (!matched || Number(p.id) !== Number(matched.id))) parentAmibaId = Number(p.id);
       }
+      const mgr = resolveManager(dept);
 
       if (matched) {
-        // 更新关联：补充 department_id / department / 巴长
         const updates = {};
-        if (!matched.department_id || Number(matched.department_id) !== deptId) updates.department_id = deptId;
+        if (Number(matched.department_id) !== deptId) updates.department_id = deptId;
         if (s(matched.department) !== deptName) updates.department = deptName;
-        if (managerName && !matched.charge_user_name) {
-          updates.charge_user_name = managerName;
-          if (managerPersonnelId) updates.charge_personnel_id = managerPersonnelId;
-        }
-        // 层级：有 parent 的是二级巴
-        const hasParent = departments.some(d2 => Number(d2.id) === Number(dept.parent_id));
-        const expectedLevel = hasParent ? 2 : 1;
+        if (rebuildParent && Number(matched.parent_id || 0) !== parentAmibaId) updates.parent_id = parentAmibaId;
         if (Number(matched.amiba_level) !== expectedLevel) updates.amiba_level = expectedLevel;
+        if (mgr.name && syncManager && s(matched.charge_user_name) !== mgr.name) {
+          updates.charge_user_name = mgr.name;
+          updates.charge_personnel_id = mgr.pid || Number(matched.charge_personnel_id) || 0;
+          updates.charge_user_id = mgr.uid || Number(matched.charge_user_id) || 0;
+        }
+        if (syncStatus && s(matched.status) !== '启用') { updates.status = '启用'; reactivated++; }
         if (Object.keys(updates).length) {
-          updates.updated_at = now();
-          await orgTable.update(matched.id, updates);
+          details.push({ action: '更新', amiba: matched.amiba_name, dept: deptName, changes: Object.keys(updates) });
+          if (!dryRun) {
+            updates.updated_at = now();
+            await orgTable.update(matched.id, updates);
+            Object.assign(matched, updates);
+          }
           updated++;
-          details.push({ action: '更新', amiba: matched.amiba_name, dept: deptName, changes: Object.keys(updates).filter(k => k !== 'updated_at') });
         } else { skipped++; }
       } else {
-        // 新建巴单元
-        const hasParent = departments.some(d2 => Number(d2.id) === Number(dept.parent_id));
-        const amibaName = deptName.endsWith('巴') ? deptName : deptName;
         const payload = {
-          parent_id: 0, amiba_level: hasParent ? 2 : 1,
-          amiba_name: amibaName, amiba_type: inferType(deptName),
-          charge_personnel_id: managerPersonnelId, charge_user_name: managerName, charge_user_id: 0,
+          parent_id: parentAmibaId, amiba_level: expectedLevel,
+          amiba_name: deptName, amiba_type: inferType(deptName),
+          charge_personnel_id: mgr.pid, charge_user_name: mgr.name, charge_user_id: mgr.uid,
           department_id: deptId, department: deptName,
           sales_person: '', product_category: '', status: '启用',
           sort: n(dept.sort, 0), created_at: now(), updated_at: now()
         };
-        const r = await orgTable.insert(payload);
-        amibas.push(Object.assign({ id: r.lastID }, payload));
+        details.push({ action: '新建', amiba: deptName, dept: deptName, type: payload.amiba_type, level: expectedLevel });
+        const node = Object.assign({ id: dryRun ? -(created + 1) : 0 }, payload);
+        if (!dryRun) {
+          const r = await orgTable.insert(payload);
+          node.id = r.lastID;
+        }
+        amibas.push(node);
+        byDeptId.set(deptId, node);
         created++;
-        details.push({ action: '新建', amiba: amibaName, dept: deptName, type: payload.amiba_type, level: payload.amiba_level });
       }
     }
-    orgTable._invalidate();
+    if (!dryRun) orgTable._invalidate();
     res.json({
-      message: `同步完成：新建 ${created} 个、更新 ${updated} 个、无变化 ${skipped} 个（共 ${departments.length} 个系统部门）`,
-      created, updated, skipped, total_departments: departments.length, details: details.slice(0, 50)
+      message: `同步${dryRun ? '预览' : ''}完成：新建 ${created} 个、更新 ${updated} 个、停用 ${deactivated} 个、启用 ${reactivated} 个、无变化 ${skipped} 个（系统部门 ${departments.length}，活跃 ${activeDepts.length}）`,
+      dry_run: dryRun, created, updated, deactivated, reactivated, skipped,
+      total_departments: departments.length, active_departments: activeDepts.length,
+      details: details.slice(0, 200)
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ============================================================
+// 外部同步通道 → 阿米巴数据引入
+// 数据来源：external-sync 同步落库的本地表 orders / purchase_orders / materials
+// 归集口径：订单 → 应收AR(收入)；采购单 → 应付AP(成本)；物料 → 定价基数
+// 匹配策略：多键探测，命中即带出巴单元；未命中不写入（预览可先确认）
+// ============================================================
+function extRecordIsExternal(rec) {
+  const src = s(rec && rec.source);
+  const rmk = s(rec && rec.remarks);
+  if (src === 'external_sync') return true;
+  if (/外部同步|外部系统|external/i.test(rmk)) return true;
+  return false;
+}
+
+// 构建匹配上下文（一次性索引，避免逐条查表）
+function buildExternalContext() {
+  const amibas = readAll('amiba_org').filter(o => s(o.status) !== '停用');
+  const deptToAmiba = new Map();
+  amibas.forEach(o => { const id = Number(o.department_id); if (id && !deptToAmiba.has(id)) deptToAmiba.set(id, o); });
+
+  const personByUser = new Map(), personByName = new Map();
+  try {
+    const pt = getTable('org_personnel'); pt._invalidate();
+    pt.all().forEach(p => {
+      if (p.linked_user_id) personByUser.set(Number(p.linked_user_id), p);
+      if (p.name) personByName.set(s(p.name), p);
+    });
+  } catch (e) {}
+
+  const custByKey = new Map();
+  try {
+    const ct = getTable('customers'); ct._invalidate();
+    ct.all().forEach(c => {
+      if (c.name) custByKey.set('n:' + s(c.name), c);
+      if (c.customer_code) custByKey.set('c:' + s(c.customer_code), c);
+    });
+  } catch (e) {}
+
+  const prodByModel = new Map();
+  try {
+    const prt = getTable('products'); prt._invalidate();
+    prt.all().forEach(p => {
+      const m = s(p.external_model || p.internal_model || p.model);
+      if (m) prodByModel.set(m, p);
+    });
+  } catch (e) {}
+
+  const matByCode = new Map();
+  try {
+    const mt = getTable('materials'); mt._invalidate();
+    mt.all().forEach(m => { if (m.material_code) matByCode.set(s(m.material_code), m); });
+  } catch (e) {}
+
+  const purchaseAmibas = amibas.filter(o => s(o.amiba_type) === '采购');
+  return { amibas, deptToAmiba, personByUser, personByName, custByKey, prodByModel, matByCode, purchaseAmibas };
+}
+
+function matchExternalOrder(rec, ctx) {
+  const aid = Number(rec.amiba_id);
+  if (aid) { const a = ctx.amibas.find(x => Number(x.id) === aid); if (a) return { amiba: a, reason: 'amiba_id' }; }
+  const did = Number(rec.department_id);
+  if (did && ctx.deptToAmiba.has(did)) return { amiba: ctx.deptToAmiba.get(did), reason: 'department_id' };
+  const sid = Number(rec.sales_id || rec.owner_id || rec.create_by);
+  if (sid && ctx.personByUser.has(sid)) {
+    const p = ctx.personByUser.get(sid);
+    if (p.department_id && ctx.deptToAmiba.has(Number(p.department_id))) return { amiba: ctx.deptToAmiba.get(Number(p.department_id)), reason: 'sales_personnel' };
+    if (p.name) { const byName = ctx.amibas.find(x => s(x.sales_person) && s(x.sales_person) === s(p.name)); if (byName) return { amiba: byName, reason: 'sales_name' }; }
+  }
+  const cust = (s(rec.customer_code) && ctx.custByKey.get('c:' + s(rec.customer_code))) || (s(rec.customer_name) && ctx.custByKey.get('n:' + s(rec.customer_name))) || null;
+  if (cust) {
+    const caid = Number(cust.amiba_id);
+    if (caid) { const a = ctx.amibas.find(x => Number(x.id) === caid); if (a) return { amiba: a, reason: 'customer_amiba' }; }
+    const cdid = Number(cust.department_id);
+    if (cdid && ctx.deptToAmiba.has(cdid)) return { amiba: ctx.deptToAmiba.get(cdid), reason: 'customer_department' };
+  }
+  const pcode = s(rec.product_code);
+  if (pcode) {
+    const prod = ctx.prodByModel.get(pcode);
+    const cat = prod && s(prod.category);
+    if (cat) { const a = ctx.amibas.find(x => s(x.product_category) && s(x.product_category) === cat); if (a) return { amiba: a, reason: 'product_category' }; }
+  }
+  return null;
+}
+
+function matchExternalPurchase(rec, ctx, opts) {
+  const aid = Number(rec.amiba_id);
+  if (aid) { const a = ctx.amibas.find(x => Number(x.id) === aid); if (a) return { amiba: a, reason: 'amiba_id' }; }
+  const did = Number(rec.department_id);
+  if (did && ctx.deptToAmiba.has(did)) return { amiba: ctx.deptToAmiba.get(did), reason: 'department_id' };
+  const forced = Number(opts && opts.purchase_amiba_id);
+  if (forced) { const a = ctx.amibas.find(x => Number(x.id) === forced); if (a) return { amiba: a, reason: '指定采购巴' }; }
+  if (ctx.purchaseAmibas.length === 1) return { amiba: ctx.purchaseAmibas[0], reason: '唯一采购巴' };
+  return null;
+}
+
+// 计算引入方案（不写库）
+function computeExternalPlan(body) {
+  const opts = body || {};
+  const onlyExternal = (s(opts.scope) || 'external') !== 'all';
+  const types = Array.isArray(opts.types) && opts.types.length ? opts.types : ['orders', 'purchase_orders', 'materials'];
+  const ctx = buildExternalContext();
+  const plan = {
+    orders: { total: 0, matched: [], unmatched: 0, skipped: 0, unmatched_samples: [] },
+    purchase_orders: { total: 0, matched: [], unmatched: 0, skipped: 0, unmatched_samples: [] },
+    materials: { trade_prices: [], dept_standards: [], total: 0 }
+  };
+
+  if (types.includes('orders')) {
+    let list = [];
+    try { list = readAll('orders'); } catch (e) {}
+    const existing = new Set(readAll('amiba_ar').map(r => s(r.document_no)));
+    for (const o of list) {
+      if (onlyExternal && !extRecordIsExternal(o)) continue;
+      plan.orders.total++;
+      const docNo = s(o.order_no) + (s(o.line_no) ? '-' + s(o.line_no) : '');
+      if (!docNo) { plan.orders.skipped++; continue; }
+      if (existing.has(docNo)) { plan.orders.skipped++; continue; }
+      const amount = n(o.order_amount || o.total_amount);
+      const m = amount ? matchExternalOrder(o, ctx) : null;
+      if (!m) {
+        plan.orders.unmatched++;
+        if (plan.orders.unmatched_samples.length < 20) plan.orders.unmatched_samples.push({ document_no: docNo, customer: s(o.customer_name), amount });
+        continue;
+      }
+      const tradeDate = s(o.promised_date || o.created_at).substring(0, 10);
+      plan.orders.matched.push({
+        amiba_id: m.amiba.id, amiba_name: m.amiba.amiba_name, reason: m.reason,
+        document_no: docNo, order_no: s(o.order_no), line_no: s(o.line_no),
+        customer_name: s(o.customer_name), amount, trade_date: tradeDate, due_date: tradeDate
+      });
+      existing.add(docNo);
+    }
+  }
+
+  if (types.includes('purchase_orders')) {
+    let list = [];
+    try { list = readAll('purchase_orders'); } catch (e) {}
+    const existing = new Set(readAll('amiba_ap').map(r => s(r.document_no)));
+    for (const po of list) {
+      if (onlyExternal && !extRecordIsExternal(po)) continue;
+      plan.purchase_orders.total++;
+      const docNo = s(po.po_no);
+      if (!docNo) { plan.purchase_orders.skipped++; continue; }
+      if (existing.has(docNo)) { plan.purchase_orders.skipped++; continue; }
+      const amount = n(po.total_amount || po.amount);
+      const m = amount ? matchExternalPurchase(po, ctx, opts) : null;
+      if (!m) {
+        plan.purchase_orders.unmatched++;
+        if (plan.purchase_orders.unmatched_samples.length < 20) plan.purchase_orders.unmatched_samples.push({ document_no: docNo, supplier: s(po.supplier), amount });
+        continue;
+      }
+      plan.purchase_orders.matched.push({
+        amiba_id: m.amiba.id, amiba_name: m.amiba.amiba_name, reason: m.reason,
+        document_no: docNo, supplier_name: s(po.supplier), amount,
+        trade_date: s(po.due_date || po.created_at).substring(0, 10), due_date: s(po.due_date || '').substring(0, 10)
+      });
+      existing.add(docNo);
+    }
+  }
+
+  if (types.includes('materials')) {
+    // 内部定价：以物料库单价为「定价基数」，回填空缺项
+    try {
+      readAll('amiba_trade_price').forEach(p => {
+        const code = s(p.product_code || p.material_code);
+        const mat = code ? ctx.matByCode.get(code) : null;
+        if (!mat) return;
+        const unit = n(mat.unit_price);
+        if (!unit || n(p.base_price) > 0) return;
+        const coef = n(p.coefficient);
+        plan.materials.trade_prices.push({
+          id: p.id, product_name: s(p.product_name), product_code: code,
+          amiba_name: s(p.from_amiba_name) + '→' + s(p.to_amiba_name),
+          base_price: unit, coefficient: coef, trade_price: coef ? round(unit * coef, 2) : n(p.trade_price)
+        });
+      });
+    } catch (e) {}
+    // 部门收支标准：同样回填基数
+    try {
+      readAll('amiba_dept_standard').forEach(d => {
+        const code = s(d.material_code);
+        const mat = code ? ctx.matByCode.get(code) : null;
+        if (!mat) return;
+        const unit = n(mat.unit_price);
+        if (!unit || n(d.base_price) > 0) return;
+        const coef = n(d.coefficient);
+        plan.materials.dept_standards.push({
+          id: d.id, amiba_id: d.amiba_id, amiba_name: s(d.amiba_name), direction: s(d.direction),
+          material_code: code, material_name: s(d.material_name || d.item_name),
+          base_price: unit, coefficient: coef, standard_price: coef ? round(unit * coef, 2) : n(d.standard_price)
+        });
+      });
+    } catch (e) {}
+    plan.materials.total = plan.materials.trade_prices.length + plan.materials.dept_standards.length;
+  }
+
+  return plan;
+}
+
+function summarizeExternalPlan(plan) {
+  return {
+    orders: { total: plan.orders.total, matched: plan.orders.matched.length, unmatched: plan.orders.unmatched, skipped: plan.orders.skipped },
+    purchase_orders: { total: plan.purchase_orders.total, matched: plan.purchase_orders.matched.length, unmatched: plan.purchase_orders.unmatched, skipped: plan.purchase_orders.skipped },
+    materials: { total: plan.materials.total, trade_prices: plan.materials.trade_prices.length, dept_standards: plan.materials.dept_standards.length },
+    matched_total: plan.orders.matched.length + plan.purchase_orders.matched.length + plan.materials.total,
+    unmatched_total: plan.orders.unmatched + plan.purchase_orders.unmatched
+  };
+}
+
+// 预览：从外部同步通道数据生成引入方案（不写库）
+router.get('/external/preview', requirePerm(PERM_VIEW), (req, res) => {
+  try {
+    const plan = computeExternalPlan({
+      scope: req.query.scope,
+      types: s(req.query.types) ? s(req.query.types).split(',') : undefined,
+      purchase_amiba_id: req.query.purchase_amiba_id
+    });
+    res.json({ message: '外部数据引入预览（未写入）', dry_run: true, summary: summarizeExternalPlan(plan), plan });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 确认引入：写入 AR/AP 与定价基数（未匹配项不写）
+router.post('/external/import', requirePerm(PERM_EDIT), async (req, res) => {
+  try {
+    const body = req.body || {};
+    const plan = computeExternalPlan(body);
+    if (body.dry_run === true || body.dryRun === true) {
+      return res.json({ message: '外部数据引入预览（未写入）', dry_run: true, summary: summarizeExternalPlan(plan), plan });
+    }
+
+    let arCreated = 0, arUpdated = 0, apCreated = 0, apUpdated = 0, priceUpdated = 0, stdUpdated = 0;
+    const nowTs = now();
+
+    // 订单 → 应收AR
+    const arTable = getTable('amiba_ar');
+    arTable._invalidate();
+    const arByDoc = new Map(arTable.all().map(r => [s(r.document_no), r]));
+    for (const item of plan.orders.matched) {
+      const fields = {
+        amiba_id: item.amiba_id, amiba_name: item.amiba_name,
+        customer_name: item.customer_name, document_no: item.document_no,
+        amount: item.amount, trade_date: item.trade_date, due_date: item.due_date,
+        source: 'external_sync', remarks: '外部订单引入', updated_at: nowTs
+      };
+      const ex = arByDoc.get(item.document_no);
+      if (ex) {
+        if (s(ex.source) === 'external_sync') { await arTable.update(ex.id, fields); arUpdated++; }
+      } else {
+        await arTable.insert(Object.assign({ paid_amount: 0, status: 'open', created_at: nowTs }, fields));
+        arCreated++;
+      }
+    }
+    arTable._invalidate();
+
+    // 采购单 → 应付AP
+    const apTable = getTable('amiba_ap');
+    apTable._invalidate();
+    const apByDoc = new Map(apTable.all().map(r => [s(r.document_no), r]));
+    for (const item of plan.purchase_orders.matched) {
+      const fields = {
+        amiba_id: item.amiba_id, amiba_name: item.amiba_name,
+        supplier_name: item.supplier_name, document_no: item.document_no,
+        amount: item.amount, trade_date: item.trade_date, due_date: item.due_date || item.trade_date,
+        source: 'external_sync', remarks: '外部采购单引入', updated_at: nowTs
+      };
+      const ex = apByDoc.get(item.document_no);
+      if (ex) {
+        if (s(ex.source) === 'external_sync') { await apTable.update(ex.id, fields); apUpdated++; }
+      } else {
+        await apTable.insert(Object.assign({ paid_amount: 0, status: 'open', created_at: nowTs }, fields));
+        apCreated++;
+      }
+    }
+    apTable._invalidate();
+
+    // 物料 → 定价基数（内部定价 / 部门收支标准）
+    const priceTable = getTable('amiba_trade_price');
+    for (const p of plan.materials.trade_prices) {
+      await priceTable.update(p.id, { base_price: p.base_price, coefficient: p.coefficient || n((priceTable.findById(p.id) || {}).coefficient), trade_price: p.trade_price, updated_at: nowTs });
+      priceUpdated++;
+    }
+    priceTable._invalidate();
+    const stdTable = getTable('amiba_dept_standard');
+    for (const d of plan.materials.dept_standards) {
+      await stdTable.update(d.id, { base_price: d.base_price, coefficient: d.coefficient || n((stdTable.findById(d.id) || {}).coefficient), standard_price: d.standard_price, amount_std: round(d.standard_price * n((stdTable.findById(d.id) || {}).quantity_std), 2), updated_at: nowTs });
+      stdUpdated++;
+    }
+    stdTable._invalidate();
+
+    res.json({
+      message: `外部数据引入完成：应收 ${arCreated} 新增/${arUpdated} 更新，应付 ${apCreated} 新增/${apUpdated} 更新，定价基数 ${priceUpdated} 条、收支标准 ${stdUpdated} 条（未匹配 ${plan.orders.unmatched + plan.purchase_orders.unmatched} 条未写入）`,
+      dry_run: false,
+      summary: summarizeExternalPlan(plan),
+      written: { ar_created: arCreated, ar_updated: arUpdated, ap_created: apCreated, ap_updated: apUpdated, price_updated: priceUpdated, std_updated: stdUpdated }
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

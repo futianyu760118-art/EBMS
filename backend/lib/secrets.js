@@ -13,6 +13,10 @@
  *                            两处同名同值：CRM 侧校验的就是这个值，EBMS 侧出站携带它（契约 §5.1/§5.2）
  *   EBMS_CRM_INGEST_URL   —— CRM 入站端点地址（非机密）
  *   EBMS_AEOS_SPOOL_DIR   —— 落盘（spool）模式的目录（非机密）
+ *
+ * M10 POMS 微系统对接（可选，未启用时以下变量可不配）：
+ *   M10_PARTNER_TOKEN     —— M10 机器通道 Bearer 凭据（机密；未配置时 M10 端点 fail-closed 返回 503）
+ *   M10_PORTAL_URL        —— M10 微系统门户地址（非机密，供 EBMS 页面跳转）
  */
 const APP_KEY = process.env.EBMS_APP_KEY || '';
 const APP_SECRET = process.env.EBMS_APP_SECRET || '';
@@ -23,6 +27,17 @@ function aeosIngestToken() { return process.env.EBMS_INGEST_TOKEN || ''; }
 function aeosOutboundToken() { return process.env.EBMS_INBOUND_TOKEN || ''; }
 function aeosCrmIngestUrl() { return process.env.EBMS_CRM_INGEST_URL || ''; }
 function aeosSpoolDir() { return process.env.EBMS_AEOS_SPOOL_DIR || ''; }
+
+// M10 POMS：按调用时刻读取，便于轮换/热注入。
+function m10PartnerToken() { return process.env.M10_PARTNER_TOKEN || ''; }
+function m10PortalUrl() { return process.env.M10_PORTAL_URL || ''; }
+
+/** M10 对接缺失项清单（供 /api/m10/status 与运维自检展示）。 */
+function missingM10() {
+  const need = [];
+  if (!m10PartnerToken()) need.push('M10_PARTNER_TOKEN');
+  return need;
+}
 
 /** AEOS 通道缺失项清单（供 /api/aeos/status 与运维自检展示，不参与启动告警）。 */
 function missingAeos(mode) {
@@ -61,5 +76,6 @@ function warnMissing() {
 
 module.exports = {
   APP_KEY, APP_SECRET, EXTERNAL_API_KEY, warnMissing,
-  aeosIngestToken, aeosOutboundToken, aeosCrmIngestUrl, aeosSpoolDir, missingAeos
+  aeosIngestToken, aeosOutboundToken, aeosCrmIngestUrl, aeosSpoolDir, missingAeos,
+  m10PartnerToken, m10PortalUrl, missingM10
 };
