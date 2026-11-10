@@ -129,4 +129,30 @@ router.put('/reports/:id/actions', requirePerm(EDIT), bulkSave('monthly_actions'
 router.put('/reports/:id/issues', requirePerm(EDIT), bulkSave('monthly_issues'));
 router.put('/reports/:id/decisions', requirePerm(EDIT), bulkSave('monthly_decisions'));
 
+// ===== 数据接入层：统一取数接口（本地 / EDP 切换，见 docs/EBMS数据接入层设计.md）=====
+router.get('/data-provider/status', requirePerm(VIEW), (req, res) => {
+  const provider = require('../lib/data-provider');
+  const contracts = require('../lib/data-provider/contracts');
+  res.json({
+    provider: provider.PROVIDER,
+    contract_methods: Object.keys(contracts.PROVIDER_CONTRACT),
+    systems: contracts.SYSTEM_ADAPTERS
+  });
+});
+
+router.get('/data-provider/fetch', requirePerm(VIEW), async (req, res) => {
+  const provider = require('../lib/data-provider');
+  const contracts = require('../lib/data-provider/contracts');
+  const period = req.query.period || '';
+  const results = {};
+  for (const key of Object.keys(contracts.PROVIDER_CONTRACT)) {
+    try {
+      results[key] = await provider[key](period);
+    } catch (e) {
+      results[key] = { source: provider.PROVIDER, status: 'error', reason: e.message };
+    }
+  }
+  res.json({ provider: provider.PROVIDER, period, results });
+});
+
 module.exports = router;

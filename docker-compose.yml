@@ -17,6 +17,9 @@ services:
       - EBMS_APP_KEY=${EBMS_APP_KEY}
       - EBMS_APP_SECRET=${EBMS_APP_SECRET}
       - EBMS_EXTERNAL_API_KEY=${EBMS_EXTERNAL_API_KEY}
+      # ---- EBMS 对外只读接口 v1（/api/v1/external，对齐恒聘通 external 规范）----
+      - EBMS_EXTERNAL_APP_KEY=${EBMS_EXTERNAL_APP_KEY:-}
+      - EBMS_EXTERNAL_APP_SECRET=${EBMS_EXTERNAL_APP_SECRET:-}
       # ---- AEOS 双向同步（PAND-307 切流 / PAND-309 R4 持久化）----
       # 入站：CRM 调 EBMS /api/aeos/ingest 时校验的令牌
       - EBMS_INGEST_TOKEN=${EBMS_INGEST_TOKEN}
