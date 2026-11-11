@@ -42,6 +42,9 @@ router.use('/external', require('./external-service'));
 
 // EBMS 对外只读接口 v1（对齐恒聘通/会议中心/M06-SPC 的 external 规范：AppKey+AppSecret 鉴权、/docs、/openapi.json）
 router.use('/v1/external', require('./external-v1'));
+
+// EBMS · EDP 数据服务对接（data-api 取数 → 本地落库，参考 M05 CRM）
+router.use('/v1/edp', require('./edp'));
 router.use('/tech', require('./tech-transfer'));
 router.use('/organization', require('./organization'));
 router.use('/data-scope', require('./data-scope'));

@@ -39,6 +39,19 @@ const localProvider = {
 
   // ---- 各系统专业结果（EBMS 只消费 Result）----
   getFinanceResults(period) {
+    // 优先消费 M09 FAC 发布的 VERIFIED FinanceResult（GR-13：不重算成本/毛利）
+    const facResult = require('../fac-result-store');
+    const verified = facResult.getVerifiedFinanceResults(period);
+    if (verified.length) {
+      return result('M09_FAC', 'finance-result-v1', period, verified.map(r => ({
+        result_type: r.result_type, object_id: r.result_id,
+        amount: r.gross_margin !== undefined && r.gross_margin !== null ? r.gross_margin : r.total_revenue,
+        total_revenue: r.total_revenue, total_cost: r.total_cost, gross_margin: r.gross_margin,
+        margin_rate: r.margin_rate, status: r.status, rule_version: r.rule_version,
+        calculation_run_id: r.calculation_run_id, verified_at: r.verified_at
+      })));
+    }
+    // 回退：本地月度报告财务指标（测试用；FAC 结果就绪后不再使用）
     const rows = indicatorsOf(period, ['财务']);
     return result('M09_FAC', 'finance-result-v1', period, rows.map(i => ({
       result_type: 'MARGIN', object_id: i.name, amount: i.actual || null,

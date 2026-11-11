@@ -42,6 +42,11 @@ services:
       # 端点 /internal/aeos/person-lifecycle（M02 EDP 分发 → EBMS adapter）；HMAC-SHA256 签名。
       # 未配置时端点 fail-closed 返回 503；代码内回退 M01_EBMS_SYNC_TOKEN。
       - AEOS_PERSON_LIFECYCLE_SECRET=${AEOS_PERSON_LIFECYCLE_SECRET:-}
+      # ---- M02 EDP 对接（数据入库 + 数据服务取数）----
+      # 取数：data-api（data:read Key，绑定消费方）；入库：E 通道源记录推送（ingest:write SERVICE Key）
+      - EDP_BASE_URL=${EDP_BASE_URL:-}
+      - EDP_READ_KEY=${EDP_READ_KEY:-}
+      - EDP_PUSH_KEY=${EDP_PUSH_KEY:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # always：无论退出码如何都自动拉起，避免进程消失后页面长期打不开
