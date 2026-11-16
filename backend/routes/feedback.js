@@ -3,6 +3,7 @@ const router = express.Router();
 const { getTable, ensureTable, now } = require('../db');
 const { requirePerm, getUserPermissions, extractUserId } = require('../auth-middleware');
 const aeos = require('../lib/aeos-hooks');
+const feedbackAi = require('../lib/feedback-ai');
 
 ensureTable('feedback');
 ensureTable('feedback_followups');
@@ -63,6 +64,36 @@ function addFollowup(feedbackId, { action, content, status_from, status_to, assi
     rec.id = id;
     return t.saveNow();
   }).then(() => rec);
+}
+
+// ===== AI 自动分析（对齐 M04 PLM：自动分类 + 方案建议 + 派单）=====
+// 提交反馈后异步触发；无 AI 配置时静默跳过（ai_status 置 failed，不影响主流程）。
+async function handleAiAnalysis(feedbackId) {
+  const table = getTable('feedback');
+  const row = table.findById(feedbackId);
+  if (!row) return;
+  try {
+    await table.update(feedbackId, { ai_status: 'running' });
+    const result = await feedbackAi.analyzeFeedback(row);
+    if (!result) {
+      await table.update(feedbackId, { ai_status: 'failed' });
+      return;
+    }
+    const updates = { ai_status: 'done', proposal: result.proposal || '' };
+    if (result.type) { updates.auto_type = result.type; if (!row.type || row.type === 'bug') updates.type = result.type; }
+    if (result.priority) { if (row.priority === 'medium') updates.priority = result.priority; }
+    if (result.assignee) { updates.auto_assignee = result.assignee; if (!row.assignee) updates.assignee = result.assignee; }
+    if (result.proposal) updates.proposal_at = now();
+    await table.update(feedbackId, updates);
+    await addFollowup(feedbackId, {
+      action: 'ai_analyze',
+      content: (result.proposal || '') + (result.assignee ? ' 建议处理：' + result.assignee : ''),
+      status_from: row.status || '', status_to: row.status || '',
+      assignee: result.assignee || '', operator: { id: null, name: 'AI 自动分析' }
+    });
+  } catch (e) {
+    try { await table.update(feedbackId, { ai_status: 'failed' }); } catch (_) {}
+  }
 }
 
 // ===== 反馈列表 =====
@@ -258,6 +289,11 @@ router.post('/', requirePerm('feedback:create'), async (req, res) => {
     status: 'open',                   // open/processing/resolved/closed
     resolution: '',
     resolved_at: null,
+    ai_status: 'queued',              // AI 自动分析子状态：none/queued/running/done/failed
+    proposal: '',                     // AI 生成的解决方案建议
+    proposal_at: null,
+    auto_type: '',                    // AI 自动分类结果
+    auto_assignee: '',                // AI 建议处理人
     created_at: now(),
     updated_at: now()
   });
@@ -271,6 +307,8 @@ router.post('/', requirePerm('feedback:create'), async (req, res) => {
     operator: { id: operator.id || null, name: submitterName }
   });
   aeos.fireUpsert('Feedback', table.findById(created.id));
+  // AI 自动分析（异步，不阻塞提交响应；对齐 M04 PLM 的 feedback autofix）
+  handleAiAnalysis(created.id);
   res.json({ message: '反馈提交成功', data: created });
 });
 
@@ -331,6 +369,16 @@ router.delete('/:id', requirePerm('feedback:delete'), async (req, res) => {
   } catch (_) {}
   aeos.fireDelete('Feedback', existing);
   res.json({ message: '反馈删除成功' });
+});
+
+// ===== 手动触发 AI 自动分析（ai_status=failed 时重试）=====
+router.post('/:id/ai-analyze', requirePerm('feedback:handle'), async (req, res) => {
+  const table = getTable('feedback');
+  const row = table.findById(req.params.id);
+  if (!row) return res.status(404).json({ error: '反馈不存在' });
+  await table.update(row.id, { ai_status: 'queued' });
+  handleAiAnalysis(row.id);
+  res.json({ message: 'AI 分析已触发', data: table.findById(row.id) });
 });
 
 module.exports = router;

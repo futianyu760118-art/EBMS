@@ -18,7 +18,10 @@ const CHILD_TABLES = [
   'monthly_dept_summary',
   'monthly_actions',
   'monthly_issues',
-  'monthly_decisions'
+  'monthly_decisions',
+  'monthly_dept_narrative',
+  'monthly_continuous_items',
+  'monthly_data_sources'
 ];
 
 function reportRows(reportId) {
@@ -28,7 +31,10 @@ function reportRows(reportId) {
     dept_summary: getTable('monthly_dept_summary').all().filter(x => Number(x.report_id) === id),
     actions: getTable('monthly_actions').all().filter(x => Number(x.report_id) === id),
     issues: getTable('monthly_issues').all().filter(x => Number(x.report_id) === id),
-    decisions: getTable('monthly_decisions').all().filter(x => Number(x.report_id) === id)
+    decisions: getTable('monthly_decisions').all().filter(x => Number(x.report_id) === id),
+    dept_narrative: getTable('monthly_dept_narrative').all().filter(x => Number(x.report_id) === id),
+    continuous_items: getTable('monthly_continuous_items').all().filter(x => Number(x.report_id) === id),
+    data_sources: getTable('monthly_data_sources').all().filter(x => Number(x.report_id) === id)
   };
 }
 
@@ -128,6 +134,9 @@ router.put('/reports/:id/dept-summary', requirePerm(EDIT), bulkSave('monthly_dep
 router.put('/reports/:id/actions', requirePerm(EDIT), bulkSave('monthly_actions'));
 router.put('/reports/:id/issues', requirePerm(EDIT), bulkSave('monthly_issues'));
 router.put('/reports/:id/decisions', requirePerm(EDIT), bulkSave('monthly_decisions'));
+router.put('/reports/:id/dept-narrative', requirePerm(EDIT), bulkSave('monthly_dept_narrative'));
+router.put('/reports/:id/continuous-items', requirePerm(EDIT), bulkSave('monthly_continuous_items'));
+router.put('/reports/:id/data-sources', requirePerm(EDIT), bulkSave('monthly_data_sources'));
 
 // ===== 数据接入层：统一取数接口（本地 / EDP 切换，见 docs/EBMS数据接入层设计.md）=====
 router.get('/data-provider/status', requirePerm(VIEW), (req, res) => {

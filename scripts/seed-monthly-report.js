@@ -26,7 +26,7 @@ async function main() {
   const r = await rt.insert({
     period: PERIOD,
     title: '2026年10月月度经营报告',
-    summary: '10月不是9月那种「订单冲高、钱没回」的极端月，而是「全面回落到常态、且数据质量在恶化」的月。接单279.94万、达成63.6%；回款仍只做到43%；开票销售额177万、综合开票毛利率从9月的30.5%掉到14.4%。比单月数字更值得警惕的是「填报缺口」：计划交付达成率、排产物料齐套率、采购来料齐套率、品质检验及时率/首件合格率10月在系统里是空的。',
+    summary: '10月不是9月那种「订单冲高、钱没回」的极端月，而是「全面回落到常态、且数据质量在恶化」的月。接单279.94万、达成63.6%（同比+95%但基数低）；回款仍只做到43%；开票销售额177万、综合开票毛利率从9月的30.5%掉到14.4%——这一跳要么是真实恶化、要么是口径差异，必须财务核对。比单月数字更值得警惕的是「填报缺口」：计划交付达成率、排产物料齐套率、采购来料齐套率、品质检验及时率/首件合格率10月在系统里是空的。好消息也在冒头：研发项目准时率35%→40.9%、样品交付55%→80%；来料3天入库81%→95%、新供应商评审照片0/9→4/4；25项打X全部已转派（9月还有6项悬空）。所以本次会议要问的不只是「为什么没完成」，更要问「为什么该填的数没填」。',
     report_date: '2026-11-05',
     prepared_by: '总经办',
     status: 'published',
@@ -158,14 +158,60 @@ async function main() {
     { seq: 11, level: '🔵', title: '四人承载超限与关键岗位留存', owner: '总经办 + 各分管', deadline: '11-20前', problem: '虞周峰/廖新平/沈旭日/李玉英行动项最集中；离职率8.61%但只考核招人不考核留人。', action: '①在办行动项封顶8-10项；②明确李玉英三线边界；③新增"关键岗位留存率"。', sort_order: 11 }
   ];
 
+  // 部门叙事（指标达成/未达标原因/对下游影响/下月动作/需公司协调）
+  const deptNarrative = [
+    { department: '销售', owner: '沈旭日', indicator_status: '接单279.94万（63.6%）、新产品96.32万（96.3%）、回款344.08万（43%）、定制转化0', reason: '①回款：10月仅回344万（计划800），Q4需净回2823万，节奏远落后；②大客户：HJ003.18-52（200万）、HJ002.7-16（100万）仍零下单，另3家达成不足20%；③接单回落：9月526万冲高后回归常态，二部仍是缺口主来源', impact: '开票177万滞后接单103万，毛利率从30.5%跌至14.4%（待核），直接压低收入质量与现金流', next_action: '延续9月决议：老客户返单/新项目转化、客户涨价机制、Q4返单沟通', coordination: '①回款作战表11月落地；②2家零下单+3家弱达成大客户会上逐个定性；③开票毛利率14.4%需财务核对口径', sort_order: 1 },
+    { department: '财务', owner: '洪香', indicator_status: '开票177.47万；综合毛利率14.4%（A类24.2%/B类14.8%/C类8.9%/D类9.9%）', reason: '综合毛利率从30.5%腰斩到14.4%，需核对口径；C类（最大开票额71.64万）毛利仅8.9%——10月开票以中低毛利客户为主', impact: '开票滞后102万直接拖累回款', coordination: '①毛利率14.4%与9月30.5%差异需财务11月会给口径说明；②开票与回款绑定推进', sort_order: 2 },
+    { department: '研发', owner: '虞周峰', indicator_status: '准时率40.9%（↑较9月35%）、样品80%（↑较55%）、爆品100%；项目开发达成0、新技术0', reason: '①改善信号明确：准时率+5.9pp、样品+25pp，试产技转策略见效；②项目开发达成归零、新技术0，建设性产出弱；③关键人被事务挤占（打X项最多责任人之一）', next_action: '延续试产技转主攻；中台系统物料图片/图纸MVP需见实际交付', coordination: '①评估研发人力与项目组合承载；②虞周峰行动项清理转派', sort_order: 3 },
+    { department: '计划', owner: '李玉英', indicator_status: '冷冻计划90.5%（74款完成67）；交付达成率/排产齐套率未填报', reason: '数据填报缺口是本月计划部最大问题：9月改善最明显的齐套率、交付达成率10月整月没填——不是指标变差，是过程管理失记；若不补录，11月趋势表会出现断点', coordination: '①交付达成率、排产齐套率限期补录；②李玉英三线角色边界需明确', sort_order: 4 },
+    { department: '采购', owner: '廖新平', indicator_status: '购销比42.5%（73款仅31达标）；降本增本0.45万；供应商管理100%、新供应商400%、照片4/4；来料齐套率未填报', reason: '①降本仍增本（涨价传导未对冲，与9月结论一致）；②合规显著改善（照片0/9翻正4/4，ISO9001卡点已补）；③来料齐套率未填报，无法判断走势', impact: '来料与订单匹配率仅40.8%（外购入库1146条、未匹配678条）——成本核算、供应商对账、来料追溯缺数据基础', coordination: '①来料入库单强制关联订单号；②10月降本/来料齐套数据限期补录；③体系合规从廖新平剥离', sort_order: 5 },
+    { department: '仓库', owner: '沈旭挺/赵申', indicator_status: '账卡物86.2%（持续改善）、七天备料92%（125欠料）；库存周转73%', reason: '欠料款数125款（全年累计572）——报欠及时率达标，但缺料本身在恶化，与计划部齐套率未填报形成呼应', coordination: '①呆滞物料处置立项并明确减值计提口径（财务参与）；②与计划部联动补齐齐套率数据', sort_order: 6 },
+    { department: '品质工程', owner: '沈建凯/孔令军', indicator_status: '出货92.7%、验货100%、新品一次100%；制程88.9%；闭环率0%、客诉及时率0%（疑似未更新）；质量损失0元', reason: '①闭环率0%/客诉及时率0%疑似数据未更新（异常30+41件记闭环0，与9月趋势明显背离）；②出厂质量没问题，过程与售后响应是结构性老问题', coordination: '①闭环率/客诉及时率核对补录，并重新定义"客诉及时"标准（连续两年为0从未真正考核）', sort_order: 7 },
+    { department: '装配车间', owner: '', indicator_status: '成品一次合格率97.8%、UPPH129%、样品83.3%——本月最佳部门', reason: '', next_action: '保持三项目标达标', sort_order: 8 },
+    { department: '信息化', owner: '', indicator_status: '审批耗时降51.1%（45h→22h）、关账异常0.78%、归档93.8%；BOM82.4%、项目开发0、培训0', reason: '效率类突出（审批效率+51%、关账异常全年最低），建设类与研发同步偏弱；变更率35.8%偏高（投料变更386/1078）是成本与交期隐性损耗', coordination: '①培训指标归口人事行政部（两套账）；②变更率35.8%拉通研发/计划做变更归因', sort_order: 9 },
+    { department: '人事行政', owner: '戎双娇/马雅雯', indicator_status: '一线招聘+2（超目标）、绩效面谈66.7%；后勤招聘0（目标1）', reason: '招得进留不住：离职率全年均值8.61%，只考核招人（超目标）不考核留人，是明显缺口', coordination: '①新增"关键岗位留存率"指标；②后勤1人缺口明确补或不补', sort_order: 10 }
+  ];
+
+  // 持续项与自动取数
+  const continuousItems = [
+    { name: '物料来料3天入库', value: '94.6%', trend: 'up', detail: '429单，3天内406单，平均1.3天', note: '↑较9月81.3%，时效短板实质性修复', auto: '自动取数', sort_order: 1 },
+    { name: '新供应商评审照片', value: '4/4', trend: 'up', detail: '100%', note: '↑较9月0/9，ISO9001硬性要求已补', auto: '自动取数', sort_order: 2 },
+    { name: '成品送检2天入库', value: '74.4%', trend: 'flat', detail: '258单，2天内192单', note: '持平', auto: '自动取数', sort_order: 3 },
+    { name: '账随物动（总仓）', value: '57.3%', trend: 'flat', detail: '590单任务，开工±3天有领料338单', note: '', auto: '自动取数', sort_order: 4 },
+    { name: '账随物动（光电仓）', value: '44.8%', trend: 'flat', detail: '174单任务，±3天命中78单', note: '', auto: '自动取数', sort_order: 5 },
+    { name: '采购来料与订单匹配', value: '40.8%', trend: 'flat', detail: '外购入库1146条、未匹配678条', note: '低位，成本核算/对账/追溯失据', auto: '自动取数', sort_order: 6 },
+    { name: '持续项周期填报', value: '8/84', trend: 'flat', detail: '截至11-04仍在录入', note: '人工填报类持续项未跟上，与月度指标留空同类问题', auto: '周期填报', sort_order: 7 }
+  ];
+
+  // 数据来源与口径
+  const dataSources = [
+    { name: '帆软·12份月度经营报告', address: 'hjoa.chinany-soft.com:8082/WebReport', range: '1销售 2研发 3计划 4仓库 5采购 6品质工程 7装配/光电/前道 8信息化 9人事 10财务，2026年10月', status: '已取', note: '', sort_order: 1 },
+    { name: '会议纪要系统·行动项台账', address: '/api/actions', range: '全量2046条，筛出10月到期242条', status: '已取', note: '', sort_order: 2 },
+    { name: '会议纪要系统·持续项跟进', address: '/api/continuous/progress', range: '84个持续项，10月自动取数6项+周期填报8项', status: '已取', note: '', sort_order: 3 },
+    { name: '泛微OA·流程量分析', address: '183.134.254.14:9099', range: '2026-10创建/办结/流转中/类型分布', status: '未取', note: '需账号密码登录（RSA加密、错7次锁号），待配置OA凭据后补取', sort_order: 4 }
+  ];
+
+  const caliberNotes = [
+    { note: '① 各报表目标值取自KPI维护表', sort_order: 1 },
+    { note: '② 销售接单按销售合同审核日期统计，滚动目标=上月剩余+本月目标', sort_order: 2 },
+    { note: '③ 三个车间、两个齐套率、两个样品交付率均为各自业务口径，是分层/上下游关系而非重复统计', sort_order: 3 },
+    { note: '④ 10月数据留空项（计划交付达成率/排产齐套率、采购来料齐套率、品质检验及时率/首件合格率、光电/前道成品合格率0批次）均因系统未填报，非指标真实值为零，请勿据此判达标或失格', sort_order: 4 },
+    { note: '⑤ 品质闭环率、客诉及时率10月记0%，与历史趋势背离，疑似未更新，待核对补录后再定性', sort_order: 5 },
+    { note: '⑥ 财务综合开票毛利率14.4%与9月30.5%差异显著，需财务核对口径（含税/不含税、退补、客户结构）后再定性', sort_order: 6 }
+  ];
+
   await seedChildren('monthly_indicators', reportId, indicators);
   await seedChildren('monthly_dept_summary', reportId, deptSummary);
   await seedChildren('monthly_actions', reportId, actions);
   await seedChildren('monthly_issues', reportId, issues);
   await seedChildren('monthly_decisions', reportId, decisions);
+  await seedChildren('monthly_dept_narrative', reportId, deptNarrative);
+  await seedChildren('monthly_continuous_items', reportId, continuousItems);
+  await seedChildren('monthly_data_sources', reportId, [...dataSources, ...caliberNotes.map(n => ({ name: '口径说明', note: n.note, sort_order: n.sort_order }))]);
 
   console.log('[seed-monthly-report] 完成：指标 ' + indicators.length + '、部门 ' + deptSummary.length +
-    '、行动 ' + actions.length + '、问题 ' + issues.length + '、决策 ' + decisions.length);
+    '、行动 ' + actions.length + '、问题 ' + issues.length + '、决策 ' + decisions.length +
+    '、叙事 ' + deptNarrative.length + '、持续项 ' + continuousItems.length + '、数据源 ' + dataSources.length);
 }
 
 main().then(() => {

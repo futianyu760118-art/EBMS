@@ -82,6 +82,8 @@
       <button class="mr-tab" data-tab="actions">决议履约</button>
       <button class="mr-tab" data-tab="issues">问题诊断</button>
       <button class="mr-tab" data-tab="decisions">决策清单</button>
+      <button class="mr-tab" data-tab="narrative">部门叙事</button>
+      <button class="mr-tab" data-tab="appendix">报告附录</button>
     </div>
 
     <!-- 经营驾驶舱 -->
@@ -100,6 +102,10 @@
       <div class="mr-card">
         <h3>12 部门红黄绿 <span class="hint">数据来自「指标明细 → 部门红黄绿」</span></h3>
         <div id="deptTable"></div>
+      </div>
+      <div class="mr-card">
+        <h3>持续项与自动取数 <span class="hint">时效/合规短板的改善证据</span></h3>
+        <div id="continuousTable"></div>
       </div>
     </div>
 
@@ -141,6 +147,29 @@
         <button class="btn btn-sm" style="background:#eef2ff;color:#4338ca;" onclick="addRow('decisions')">+ 决策</button>
       </div>
       <div class="mr-card" style="padding:10px;"><table class="mr-table" id="tbl-decisions"></table></div>
+    </div>
+
+    <!-- 部门叙事 -->
+    <div class="mr-panel" id="panel-narrative">
+      <div class="mr-toolbar">
+        <button class="btn btn-primary btn-sm" data-perm="monthly-report:edit" onclick="saveTab('dept_narrative')">保存部门叙事</button>
+        <button class="btn btn-sm" style="background:#eef2ff;color:#4338ca;" onclick="addRow('dept_narrative')">+ 部门</button>
+      </div>
+      <div class="mr-card" style="padding:10px;"><table class="mr-table" id="tbl-dept_narrative"></table></div>
+    </div>
+
+    <!-- 报告附录（持续项 + 数据来源与口径）-->
+    <div class="mr-panel" id="panel-appendix">
+      <div class="mr-toolbar">
+        <button class="btn btn-primary btn-sm" data-perm="monthly-report:edit" onclick="saveTab('continuous_items')">保存持续项</button>
+        <button class="btn btn-sm" style="background:#eef2ff;color:#4338ca;" onclick="addRow('continuous_items')">+ 持续项</button>
+        <button class="btn btn-primary btn-sm" data-perm="monthly-report:edit" onclick="saveTab('data_sources')">保存数据源/口径</button>
+        <button class="btn btn-sm" style="background:#eef2ff;color:#4338ca;" onclick="addRow('data_sources')">+ 数据源</button>
+      </div>
+      <h4 class="mr-section-title">持续项与自动取数</h4>
+      <div class="mr-card" style="padding:10px;"><table class="mr-table" id="tbl-continuous_items"></table></div>
+      <h4 class="mr-section-title">数据来源</h4>
+      <div class="mr-card" style="padding:10px;"><table class="mr-table" id="tbl-data_sources"></table></div>
     </div>
   </div>
 
@@ -194,6 +223,30 @@
         { key: 'deadline', label: '时限', type: 'text', cls: 'col-sm' },
         { key: 'problem', label: '问题', type: 'textarea', cls: 'col-lg' },
         { key: 'action', label: '拍什么', type: 'textarea', cls: 'col-lg' }
+      ],
+      dept_narrative: [
+        { key: 'department', label: '部门', type: 'text', cls: 'col-sm' },
+        { key: 'owner', label: '责任人', type: 'text', cls: 'col-sm' },
+        { key: 'indicator_status', label: '指标达成', type: 'textarea', cls: 'col-lg' },
+        { key: 'reason', label: '未达标原因', type: 'textarea', cls: 'col-lg' },
+        { key: 'impact', label: '对下游影响', type: 'textarea', cls: 'col-md' },
+        { key: 'next_action', label: '下月动作', type: 'textarea', cls: 'col-md' },
+        { key: 'coordination', label: '需公司协调', type: 'textarea', cls: 'col-lg' }
+      ],
+      continuous_items: [
+        { key: 'name', label: '项目', type: 'text', cls: 'col-md' },
+        { key: 'value', label: '结果', type: 'text', cls: 'col-sm' },
+        { key: 'trend', label: '趋势', type: 'select', options: { up: '↑改善', down: '↓恶化', flat: '持平' }, cls: 'col-sm' },
+        { key: 'detail', label: '明细', type: 'text', cls: 'col-lg' },
+        { key: 'note', label: '说明', type: 'text', cls: 'col-lg' },
+        { key: 'auto', label: '取数方式', type: 'text', cls: 'col-sm' }
+      ],
+      data_sources: [
+        { key: 'name', label: '数据源/口径', type: 'text', cls: 'col-md' },
+        { key: 'address', label: '地址', type: 'text', cls: 'col-md' },
+        { key: 'range', label: '取数范围', type: 'textarea', cls: 'col-lg' },
+        { key: 'status', label: '状态', type: 'text', cls: 'col-sm' },
+        { key: 'note', label: '口径说明', type: 'textarea', cls: 'col-lg' }
       ]
     };
 
@@ -207,7 +260,7 @@
     function attrEsc(s) { return esc(s); }
 
     // 前端实体键 → 后端 URL 路径段（dept_summary 在接口里用 kebab）
-    const URL_KEY = { dept_summary: 'dept-summary', indicators: 'indicators', actions: 'actions', issues: 'issues', decisions: 'decisions' };
+    const URL_KEY = { dept_summary: 'dept-summary', indicators: 'indicators', actions: 'actions', issues: 'issues', decisions: 'decisions', dept_narrative: 'dept-narrative', continuous_items: 'continuous-items', data_sources: 'data-sources' };
 
     async function api(path, opts) {
       const res = await fetch('/api/monthly-report' + path, opts);
@@ -253,11 +306,15 @@
 
     function renderAll() {
       renderCockpit();
+      renderContinuous();
       renderTable('dept_summary');
       renderTable('indicators');
       renderTable('actions');
       renderTable('issues');
       renderTable('decisions');
+      renderTable('dept_narrative');
+      renderTable('continuous_items');
+      renderTable('data_sources');
       window.applyPermissionFilter && window.applyPermissionFilter();
     }
 
@@ -280,6 +337,23 @@
       });
       html += '</tbody></table>';
       document.getElementById('deptTable').innerHTML = html;
+    }
+
+    function renderContinuous() {
+      const el = document.getElementById('continuousTable');
+      if (!el || !current) return;
+      const items = (current.continuous_items || []).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+      if (items.length === 0) {
+        el.innerHTML = '<div class="mr-empty">暂无持续项数据（在「报告附录」页签维护）</div>';
+        return;
+      }
+      const trendIcon = { up: '↑ 改善', down: '↓ 恶化', flat: '— 持平' };
+      let ch = '<table class="mr-table"><thead><tr><th>项目</th><th>结果</th><th>趋势</th><th>明细</th><th>说明</th><th>取数方式</th></tr></thead><tbody>';
+      items.forEach(it => {
+        ch += '<tr><td>' + esc(it.name) + '</td><td>' + esc(it.value) + '</td><td>' + (trendIcon[it.trend] || '—') + '</td><td>' + esc(it.detail) + '</td><td>' + esc(it.note) + '</td><td>' + esc(it.auto) + '</td></tr>';
+      });
+      ch += '</tbody></table>';
+      el.innerHTML = ch;
     }
 
     function kpiCard(cat) {
