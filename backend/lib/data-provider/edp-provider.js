@@ -62,19 +62,35 @@ async function catalog() {
 }
 
 // 查询数据集（POST /query，参数按 JSON 类型，规避 GET 全字符串限制）
+// 429 处理（对齐 edp-datasvc-integration 技能）：按 error.extra.retry_after 退避并保留原参数重试；
+// 日配额型 429（只有 day_calls 无 retry_after）不重试，直接抛错终止本轮。
 async function queryDataset(code, params, opts) {
   const o = opts || {};
   const body = { params: params || {}, limit: o.limit || 500 };
   if (o.cursor) body.cursor = o.cursor;
   if (o.version) body.version = o.version;
-  const r = await httpFetch('POST', '/api/v1/data-api/' + encodeURIComponent(code) + '/query', body);
-  if (r.status === 429) {
-    const err = new Error('EDP 429 限流');
-    err.retryAfter = (r.body && r.body.error && r.body.error.extra && r.body.error.extra.retry_after) || 1;
-    throw err;
+  const maxRetry = o.maxRetry === undefined ? 5 : o.maxRetry;
+  for (let attempt = 0; ; attempt++) {
+    const r = await httpFetch('POST', '/api/v1/data-api/' + encodeURIComponent(code) + '/query', body);
+    if (r.status === 429) {
+      const extra = (r.body && r.body.error && r.body.error.extra) || {};
+      if (extra.day_calls !== undefined && extra.retry_after === undefined) {
+        const err = new Error('EDP 日配额超限（day_calls=' + extra.day_calls + '），次日窗口重跑或调高配额');
+        err.dayQuota = true;
+        throw err;
+      }
+      if (attempt >= maxRetry) {
+        const err = new Error('EDP 429 持续限流（已重试 ' + maxRetry + ' 次）');
+        throw err;
+      }
+      const waitSec = Number(extra.retry_after) || 30;
+      console.log('[edp-provider] 429 限流，' + waitSec + 's 后重试（第 ' + (attempt + 1) + '/' + maxRetry + ' 次）: ' + code);
+      await new Promise((res) => setTimeout(res, waitSec * 1000 + 500));
+      continue;
+    }
+    if (r.status !== 200) throw new Error('EDP query 失败 ' + r.status + ': ' + r.text);
+    return r.body;
   }
-  if (r.status !== 200) throw new Error('EDP query 失败 ' + r.status + ': ' + r.text);
-  return r.body; // { dataset_code, dataset_version, rows, next_cursor, truncated }
 }
 
 async function fetchKind(owner, contract, period, kind, params) {
