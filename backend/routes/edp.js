@@ -17,6 +17,7 @@ const { requirePerm } = require('../auth-middleware');
 const edp = require('../lib/data-provider/edp-provider');
 const sync = require('../lib/edp-sync');
 const facResult = require('../lib/fac-result-store');
+const sopSync = require('../lib/sop-edp-sync');
 
 const PERM = 'system:config';
 
@@ -97,6 +98,29 @@ router.post('/finance-results', requirePerm(PERM), async (req, res) => {
     }
   }
   res.json({ ok: true, count: results.length, results });
+});
+
+// ===== 产销协调会数据更新（EDP → SOP）=====
+// 先确保源数据集已同步（可传 datasets 数组，缺省同步 SOP 相关 6 个），再更新 PSI 实际值 + 行动项。
+router.post('/sop/sync', requirePerm(PERM), async (req, res) => {
+  const body = req.body || {};
+  const periodMonth = body.period_month || '';
+  const datasets = Array.isArray(body.datasets) && body.datasets.length
+    ? body.datasets
+    : ['ads-order-list', 'ads-production-task-view', 'ads-inventory-view', 'meeting-assistant-actions'];
+  const syncResults = [];
+  for (const code of datasets) {
+    try {
+      const r = await sync.syncDataset(code, {});
+      syncResults.push({ dataset: code, status: r.status, rows_stored: r.rows_stored, pages: r.pages });
+    } catch (e) {
+      syncResults.push({ dataset: code, status: 'failed', error: e.message });
+    }
+  }
+  let psi = null, actions = null;
+  try { psi = await sopSync.syncPsiFromEdp(periodMonth); } catch (e) { psi = { ok: false, error: e.message }; }
+  try { actions = await sopSync.syncActionsFromEdp(); } catch (e) { actions = { ok: false, error: e.message }; }
+  res.json({ ok: true, dataset_syncs: syncResults, psi, actions });
 });
 
 module.exports = router;
