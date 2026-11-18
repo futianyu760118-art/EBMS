@@ -1698,4 +1698,21 @@ router.get('/dept/engineering', (req, res) => {
   });
 });
 
+// ===== 产销协调会总报告（汇总各模块：PSI/KPI/需求/会议/行动项/预警/自检）=====
+router.get('/full-report', async (req, res) => {
+  try {
+    const { generateSopFullReport } = require('../lib/sop-report-generator');
+    const md = generateSopFullReport(req.query.period_month);
+    if (req.query.download === '1') {
+      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="sop-full-report.md"');
+      return res.send(md);
+    }
+    res.type('text/markdown; charset=utf-8');
+    res.send(md);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
