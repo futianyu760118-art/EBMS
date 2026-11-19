@@ -119,7 +119,10 @@ router.post('/sop/sync', requirePerm(PERM), async (req, res) => {
   }
   let psi = null, actions = null;
   try { psi = await sopSync.syncPsiFromEdp(periodMonth); } catch (e) { psi = { ok: false, error: e.message }; }
-  try { actions = await sopSync.syncActionsFromEdp(); } catch (e) { actions = { ok: false, error: e.message }; }
+  // 待办只拉近 N 个月（默认 2 个月，2 个月以前不获取）；支持 cutoff_date 自定义截止日
+  try {
+    actions = await sopSync.syncActionsFromEdp({ months_back: body.months_back, cutoff_date: body.cutoff_date });
+  } catch (e) { actions = { ok: false, error: e.message }; }
   res.json({ ok: true, dataset_syncs: syncResults, psi, actions });
 });
 

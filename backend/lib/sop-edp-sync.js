@@ -117,8 +117,30 @@ async function syncPsiFromEdp(periodMonth) {
 }
 
 // ===== 2. 会议助手行动项 → sop_actions =====
-async function syncActionsFromEdp() {
-  const rows = edpRows('meeting-assistant-actions');
+// 计算 N 个月前的日期（YYYY-MM-DD，北京时间）
+function monthsAgoDate(months) {
+  const d = new Date(Date.now() + 8 * 3600 * 1000);
+  d.setUTCMonth(d.getUTCMonth() - months);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * 会议助手行动项 → sop_actions。
+ * opts.months_back：只同步近 N 个月（按 due_date/created_at）的行动项；默认 2 个月，2 个月以前不拉取。
+ * opts.cutoff_date：直接指定截止日（YYYY-MM-DD），优先于 months_back。
+ */
+async function syncActionsFromEdp(opts) {
+  const o = opts || {};
+  const cutoff = o.cutoff_date || (o.months_back === 0 ? '' : monthsAgoDate(o.months_back === undefined ? 2 : o.months_back));
+  const allRows = edpRows('meeting-assistant-actions');
+  // 时间过滤：无日期的保留；有日期的 < 截止日则视为"2个月以前"跳过
+  const rows = cutoff
+    ? allRows.filter((r) => {
+        const p = r.payload || {};
+        const d = String(p.due_date || p.created_at || p.occurred_at || '').slice(0, 10);
+        return !d || d >= cutoff;
+      })
+    : allRows;
   const actT = getTable('sop_actions');
   const statusMap = { done: 'CLOSED', in_progress: 'IN_PROGRESS', todo: 'PENDING', pending: 'PENDING' };
   let created = 0, updated = 0, skipped = 0;
@@ -153,7 +175,7 @@ async function syncActionsFromEdp() {
       created++;
     }
   }
-  return { ok: true, source_rows: rows.length, created, updated, skipped };
+  return { ok: true, cutoff: cutoff || null, source_rows: allRows.length, in_range_rows: rows.length, skipped_old: allRows.length - rows.length, created, updated, skipped };
 }
 
-module.exports = { syncPsiFromEdp, syncActionsFromEdp };
+module.exports = { syncPsiFromEdp, syncActionsFromEdp, monthsAgoDate };

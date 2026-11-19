@@ -124,7 +124,8 @@
 
   function render() {
     if (document.getElementById('feedbackWidget')) return;
-    if (!localStorage.getItem('currentUserId')) return; // 未登录不显示（如登录页）
+    // 已登录即显示（currentUserId 或 authToken 任一即可，避免部分登录路径缺 currentUserId 时反馈控件不出现）
+    if (!localStorage.getItem('currentUserId') && !localStorage.getItem('authToken')) return;
     var root = buildUI();
     document.getElementById('fbModule').textContent = currentModule();
     document.getElementById('fbSubmitter').textContent = currentUserName() || '当前用户';
@@ -215,14 +216,8 @@
       if (fw) fw.style.display = 'block';
     };
 
-    // 延迟按权限校验（permission-check.js 在本脚本之后加载）
-    setTimeout(function () {
-      try {
-        if (window.PermissionCheck && typeof PermissionCheck.has === 'function' && !PermissionCheck.has('feedback:create')) {
-          root.style.display = 'none';
-        }
-      } catch (e) {}
-    }, 800);
+    // 反馈控件对所有登录用户可见（feedback:create 为全局基础权限，后端提交时校验）。
+    // 不再因权限判断延迟隐藏，避免权限接口偶发失败或非 admin 账号导致"反馈功能消失"。
 
     window.__feedbackWidgetRefresh = loadMine;
   }

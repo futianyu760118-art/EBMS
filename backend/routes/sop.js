@@ -1050,8 +1050,45 @@ router.get('/ebms/period-compare', (req, res) => {
 
 // 按 S&OP 周期聚合 EBMS 订单管线（订单分析库 order_products → BOM 编码维度）
 function periodPipeline(period) {
-  const orders = ebmsTable('orders').all();
-  const periodOrders = orders.filter(o => sopPeriodFromDate(o.promised_date) === period);
+  // 1. EBMS 本地订单（少量）
+  const localOrders = ebmsTable('orders').all().map(o => ({
+    order_no: o.order_no,
+    customer_name: o.customer_name || o.customer_code || '',
+    customer_code: o.customer_code || '',
+    promised_date: o.promised_date || o.order_date || '',
+    order_amount: toNum(o.order_amount),
+    quantity: toNum(o.quantity),
+    completed_qty: toNum(o.completed_qty),
+    status: o.status || 'open'
+  }));
+  // 2. EDP 订单主数据（ads-order-list 落库，真实订单源，覆盖本地）
+  let edpOrders = [];
+  try {
+    const rows = getTable('edp_dataset_row').all().filter(r => r.dataset_code === 'ads-order-list');
+    edpOrders = rows.map(r => {
+      let p = r.payload;
+      if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = {}; } }
+      p = p || {};
+      return {
+        order_no: p.order_no || p.source_id || ('EDP-' + r.row_pk),
+        customer_name: p.customer || '',
+        customer_code: p.customer_code || '',
+        promised_date: p.promised_date || p.order_date || '',
+        order_date: p.order_date || '',
+        order_amount: toNum(p.order_amount),
+        quantity: toNum(p.order_qty),
+        completed_qty: toNum(p.completed_qty),
+        status: p.is_closed ? 'closed' : 'open'
+      };
+    });
+  } catch (e) {}
+  // 合并去重（按 order_no，EDP 覆盖本地）
+  const map = {};
+  localOrders.forEach(o => { if (o.order_no) map[o.order_no] = o; });
+  edpOrders.forEach(o => { if (o.order_no) map[o.order_no] = o; });
+  const allOrders = Object.values(map);
+  // 按 S&OP 时间窗口（上月16~当月15）过滤
+  const periodOrders = allOrders.filter(o => sopPeriodFromDate(o.promised_date) === period);
   const orderNos = new Set(periodOrders.map(o => o.order_no));
   const orderCust = {}; periodOrders.forEach(o => { orderCust[o.order_no] = o.customer_name || o.customer_code || ''; });
   const op = ebmsTable('order_products').all();

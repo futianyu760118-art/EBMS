@@ -407,10 +407,14 @@ function applySopView(mode){
   }
 }
 function setSopView(mode){localStorage.setItem('sop_view_mode', mode);applySopView(mode);}
-// 顶部「反馈」按钮：优先打开全局反馈浮窗；浮窗未加载则跳转反馈页
+// 顶部「反馈」按钮：直接打开全局反馈抽屉（不依赖悬浮球，更可靠）
 function openSopFeedback(){
-  const fab=document.getElementById('fbFab');
-  if(fab){fab.click();return;}
+  const panel=document.getElementById('fbPanel');
+  if(panel){
+    panel.classList.add('open');
+    if(typeof window.__feedbackWidgetRefresh==='function'){try{window.__feedbackWidgetRefresh();}catch(e){}}
+    return;
+  }
   window.location.href='feedback.html';
 }
 function esc(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
