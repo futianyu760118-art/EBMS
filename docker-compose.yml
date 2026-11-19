@@ -47,6 +47,13 @@ services:
       - EDP_BASE_URL=${EDP_BASE_URL:-}
       - EDP_READ_KEY=${EDP_READ_KEY:-}
       - EDP_PUSH_KEY=${EDP_PUSH_KEY:-}
+      # ---- M05 CRM 销售看板 / M04 PLM 研发项目取数 ----
+      - CRM_EXTERNAL_HOST=${CRM_EXTERNAL_HOST:-}
+      - CRM_EXTERNAL_APP_KEY=${CRM_EXTERNAL_APP_KEY:-}
+      - CRM_EXTERNAL_APP_SECRET=${CRM_EXTERNAL_APP_SECRET:-}
+      - PLM_API_HOST=${PLM_API_HOST:-}
+      - PLM_USERNAME=${PLM_USERNAME:-}
+      - PLM_PASSWORD=${PLM_PASSWORD:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # always：无论退出码如何都自动拉起，避免进程消失后页面长期打不开
