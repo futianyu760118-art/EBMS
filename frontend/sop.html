@@ -87,6 +87,7 @@ select:disabled,input:disabled{background:#f5f5f5;color:#999}
 <select id="gPeriod" onchange="setGlobalPeriod()" style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"></select>
 <button class="btn b3" onclick="runAlertEngine()"> 运行预警引擎</button>
 <button class="btn b4" onclick="runSelfCheck()"> 每周自检</button>
+<button class="btn" style="background:#eef2ff;color:#4338ca" onclick="openSopFeedback()"> 反馈</button>
 </div>
 </div>
 
@@ -394,6 +395,12 @@ function applySopView(mode){
   }
 }
 function setSopView(mode){localStorage.setItem('sop_view_mode', mode);applySopView(mode);}
+// 顶部「反馈」按钮：优先打开全局反馈浮窗；浮窗未加载则跳转反馈页
+function openSopFeedback(){
+  const fab=document.getElementById('fbFab');
+  if(fab){fab.click();return;}
+  window.location.href='feedback.html';
+}
 function esc(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function openModal(html){document.getElementById('mb').innerHTML=html;document.getElementById('mo').classList.add('ac');}
 function closeModal(){document.getElementById('mo').classList.remove('ac');}
