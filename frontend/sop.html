@@ -124,6 +124,7 @@ select:disabled,input:disabled{background:#f5f5f5;color:#999}
 <div class="panel"><h3> 本月复盘  公司这个月做得怎么样 <span id="rvPeriod" style="font-size:12px;color:#999;font-weight:400"></span></h3>
 <div class="sg" id="rvCards"></div>
 <div id="blockBanner"></div>
+<div id="reconcileBar"></div>
 <div class="grid2">
 <div><h4 style="margin:6px 0">本月重点产品需求（BOM）</h4><div class="tbl-wrap" style="max-height:24vh"><table><thead><tr><th>BOM编码</th><th>BOM号</th><th>名称</th><th>数量</th><th>金额</th><th>单数</th></tr></thead><tbody id="rvProdBody"></tbody></table></div></div>
 <div><h4 style="margin:6px 0">️ 逾期未交付订单</h4><div class="tbl-wrap" style="max-height:24vh"><table><thead><tr><th>订单号</th><th>客户</th><th>逾期天</th><th>数量</th><th>已完成</th></tr></thead><tbody id="rvOverdueBody"></tbody></table></div></div>
@@ -156,6 +157,7 @@ select:disabled,input:disabled{background:#f5f5f5;color:#999}
 <div class="tc" id="tab-kpi">
 <div class="sb">
 <select id="kpiCat" onchange="loadKpi()"><option value="">全部分类</option><option value="KPI">结果指标(KPI)</option><option value="PI">过程指标(PI)</option><option value="MI">领先指标(MI)</option></select>
+<label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="kpiOnlyAbnormal" checked onchange="loadKpi()"> 仅看异常（红/黄）</label>
 <span style="font-size:12px;color:#999">周期取顶部全局选择</span>
 <button class="btn b1 bs" onclick="loadKpi()">刷新</button>
 </div>
@@ -173,7 +175,7 @@ select:disabled,input:disabled{background:#f5f5f5;color:#999}
 <button class="btn b2 bs" onclick="prefillPsi()"> 从EBMS订单预填销售计划</button>
 <span style="color:#999;font-size:12px">期末=期初+生产-销售，红黄绿自动计算；预填=本月实订单→M，下月实订单→M+1</span>
 </div>
-<div class="tbl-wrap"><table id="psiTbl"><thead><tr><th>产品</th><th>月</th><th>期初</th><th>销售</th><th>生产</th><th>期末</th><th>安全库存</th><th>灯</th></tr></thead><tbody id="psiBody"></tbody></table></div>
+<div class="tbl-wrap"><table id="psiTbl"><thead><tr><th>产品</th><th>月</th><th>期初</th><th>销售计划</th><th>销售实际(EDP)</th><th>生产计划</th><th>生产实际(EDP)</th><th>M+1预测</th><th>期末</th><th>安全库存</th><th>灯</th></tr></thead><tbody id="psiBody"></tbody></table></div>
 </div>
 
 <!-- ===== 供应评审 ===== -->
@@ -295,6 +297,14 @@ select:disabled,input:disabled{background:#f5f5f5;color:#999}
 <button class="btn b1 bs" onclick="loadDept()">刷新</button>
 </div>
 
+<!-- 供需平衡表（主表 · C档合并） -->
+<div class="panel"><h3>供需平衡表 <span style="font-size:12px;color:#999;font-weight:400">需求→产能→齐套→库存→缺口→谁补（6 部门报告合并主表）</span></h3>
+<div class="sg" id="balSummary"></div>
+<div class="tbl-wrap" style="max-height:44vh"><table><thead><tr><th>产品</th><th>需求(M)</th><th>生产计划</th><th>库存</th><th>缺口(需求-生产-期初)</th><th>物料短缺</th><th>谁补</th></tr></thead><tbody id="balBody"></tbody></table></div>
+</div>
+
+<details style="margin:10px 0"><summary style="cursor:pointer;font-weight:700;color:#666;padding:8px 0">各部门明细报告（6 份 · 点击展开，原报告归档）</summary>
+
 <!-- 销售中心 -->
 <div class="panel"><h3 style="color:#667eea"> 销售中心报告</h3>
 <div class="sg" id="salesCards"></div>
@@ -362,6 +372,7 @@ select:disabled,input:disabled{background:#f5f5f5;color:#999}
 </div>
 </div>
 
+</details>
 </div>
 
 <!-- ===== Modals ===== -->
@@ -753,6 +764,16 @@ const msgs=(rv.alerts.top||[]).filter(t=>t.level==='BLOCK').map(t=>esc(t.message
 bb.innerHTML=`<div style="background:#fdecea;border:1px solid #e5484d;color:#b3261e;padding:10px 14px;border-radius:8px;margin-bottom:10px;font-weight:700;font-size:13px">🚨 BLOCK 级硬拦截未解决 ${rv.alerts.block} 项：${msgs}</div>`;
 }else{bb.innerHTML='';}
 })();
+// 上期决议对账（B档：稽核报告降后台，只把兑现率送到驾驶舱）
+(function(){
+const rb=document.getElementById('reconcileBar');
+if(!rb)return;
+if(rv.reconcile){
+const rc=rv.reconcile;
+const rateTxt=(rc.rate===null||rc.rate===undefined)?'—':(rc.rate+'%');
+rb.innerHTML=`<div style="background:#f0f9ff;border:1px solid #bae6fd;color:#075985;padding:8px 14px;border-radius:8px;margin-bottom:10px;font-size:13px">上期决议对账（${esc(rc.prev_period)}）：到期 ${rc.total} 项，已兑现 <b>${rc.closed}</b> 项，兑现率 <b>${rateTxt}</b></div>`;
+}else{rb.innerHTML='';}
+})();
 document.getElementById('rvProdBody').innerHTML=rv.product_list&&rv.product_list.length?rv.product_list.map(p=>`<tr><td style="font-size:11px">${esc(p.product_code)}</td><td style="font-size:11px;color:#667eea">${esc(p.bom_no||'-')}</td><td style="font-size:11px">${esc(p.product_name||'-').slice(0,16)}</td><td>${p.qty}</td><td>${p.amount.toFixed(0)}</td><td>${p.order_count}</td></tr>`).join(''):'<tr><td colspan=6 class="em">无</td></tr>';
 document.getElementById('rvOverdueBody').innerHTML=rv.overdue_orders.length?rv.overdue_orders.map(o=>`<tr style="background:#fff5f5"><td>${esc(o.order_no)}</td><td>${esc(o.customer)}</td><td><b class="ov">${o.overdue_days}天</b></td><td>${o.qty}</td><td>${o.completed}</td></tr>`).join(''):'<tr><td colspan=5 class="em">本月无逾期</td></tr>';
 enhanceTable('rvProdBody');enhanceTable('rvOverdueBody');
@@ -783,14 +804,19 @@ enhanceTable('planProdBody');enhanceTable('planCapBody');
 // ===== KPI =====
 async function loadKpi(){
 const cat=document.getElementById('kpiCat').value,period=GLOBAL_PERIOD||'';
+const abnEl=document.getElementById('kpiOnlyAbnormal');
+const onlyAbn=abnEl?abnEl.checked:true;
 const d=await api('/kpi/actuals?period_month='+period+(cat?'&status=':''));
 const all=await api('/kpi/standards'+(cat?'?category='+cat:''));
 const stdMap={};all.data.forEach(s=>stdMap[s.kpi_code]=s);
 let rows=d.data;
 if(cat)rows=rows.filter(r=>stdMap[r.kpi_code]&&stdMap[r.kpi_code].category===cat);
 const red=rows.filter(r=>r.status==='R').length,yel=rows.filter(r=>r.status==='Y').length,grn=rows.filter(r=>r.status==='G').length;
-document.getElementById('kpiSummary').innerHTML=`<div class="sc"><div class="n" style="color:#e74c3c">${red}</div><div class="l">红灯</div></div><div class="sc"><div class="n" style="color:#f39c12">${yel}</div><div class="l">黄灯</div></div><div class="sc"><div class="n" style="color:#27ae60">${grn}</div><div class="l">绿灯</div></div>`;
-document.getElementById('kpiBody').innerHTML=rows.length?rows.map(r=>{const s=stdMap[r.kpi_code]||{};return `<tr class="row-${r.status}"><td>${esc(r.kpi_code)}</td><td><span class="kpi-cat kpi-${s.category||r.category||''}">${s.category||r.category||''}</span></td><td>${esc(s.kpi_name||r.kpi_name)}</td><td>${s.target_value||r.target_value}</td><td>${s.warning_threshold||r.warning_threshold}</td><td>${s.critical_threshold||r.critical_threshold}</td><td style="font-weight:600">${r.actual_value}</td><td><span class="badge st-${r.status}">${r.status}</span></td><td style="font-size:11px;color:#999">${esc(s.data_source||'')}</td></tr>`;}).join(''):'<tr><td colspan=9 class="em">无数据</td></tr>';
+const total=rows.length;
+// KPI 精简展示（诊断报告C档）：默认只显示红/黄灯，全量折叠
+if(onlyAbn)rows=rows.filter(r=>r.status==='R'||r.status==='Y').sort((a,b)=>(a.status==='R'?0:1)-(b.status==='R'?0:1));
+document.getElementById('kpiSummary').innerHTML=`<div class="sc"><div class="n" style="color:#e74c3c">${red}</div><div class="l">红灯</div></div><div class="sc"><div class="n" style="color:#f39c12">${yel}</div><div class="l">黄灯</div></div><div class="sc"><div class="n" style="color:#27ae60">${grn}</div><div class="l">绿灯</div></div><div class="sc"><div class="n" style="color:#64748b">${onlyAbn?rows.length+'/'+total:total}</div><div class="l">${onlyAbn?'显示(异常/全部)':'全部指标'}</div></div>`;
+document.getElementById('kpiBody').innerHTML=rows.length?rows.map(r=>{const s=stdMap[r.kpi_code]||{};return `<tr class="row-${r.status}"><td>${esc(r.kpi_code)}</td><td><span class="kpi-cat kpi-${s.category||r.category||''}">${s.category||r.category||''}</span></td><td>${esc(s.kpi_name||r.kpi_name)}</td><td>${s.target_value||r.target_value}</td><td>${s.warning_threshold||r.warning_threshold}</td><td>${s.critical_threshold||r.critical_threshold}</td><td style="font-weight:600">${r.actual_value}</td><td><span class="badge st-${r.status}">${r.status}</span></td><td style="font-size:11px;color:#999">${esc(s.data_source||'')}</td></tr>`;}).join(''):'<tr><td colspan=9 class="em">无异常指标（全部达标）</td></tr>';
 }
 
 // ===== PSI =====
@@ -805,8 +831,17 @@ async function loadPsiLines(){
 if(!psiHeaderId)return;
 const d=await api('/psi/headers/'+psiHeaderId+'/lines');
 psiData=d.data;
+// 需求预测并入 PSI（C档）：取当期预测按产品映射，展示在 M 行的「M+1预测」列
+let fcMap={};
+try{const fc=await api('/forecast?period_month='+encodeURIComponent(GLOBAL_PERIOD||''));
+(fc.data||[]).forEach(f=>{const k=f.product_code;const v=Number(f.forecast_qty)||0;if(fcMap[k]===undefined||v>fcMap[k])fcMap[k]=v;});}catch(e){}
 const offLabel={0:'M(锁定)',1:'M+1(弹性)',2:'M+2(参考)'};
-document.getElementById('psiBody').innerHTML=psiData.length?psiData.map(l=>`<tr class="row-${l.color_status}"><td>${esc(l.product_code)}</td><td>${offLabel[l.month_offset]||l.month_offset}</td><td>${l.inventory_begin}</td><td>${l.month_offset===0?l.sales_plan:`<input type="number" value="${l.sales_plan}" style="width:70px" data-id="${l.id}" data-f="sales_plan">`}</td><td>${l.month_offset===0?l.production_plan:`<input type="number" value="${l.production_plan}" style="width:70px" data-id="${l.id}" data-f="production_plan">`}</td><td><b>${l.inventory_end}</b></td><td>${l.month_offset===0?l.safety_stock:`<input type="number" value="${l.safety_stock}" style="width:70px" data-id="${l.id}" data-f="safety_stock">`}</td><td><span class="badge st-${l.color_status}">${l.color_status}</span></td></tr>`).join(''):'<tr><td colspan=8 class="em">无PSI数据</td></tr>';
+document.getElementById('psiBody').innerHTML=psiData.length?psiData.map(l=>{
+const sa=(l.sales_actual!==undefined&&l.sales_actual!==null)?l.sales_actual:'—';
+const pa=(l.production_actual!==undefined&&l.production_actual!==null)?l.production_actual:'—';
+const fcv=l.month_offset===0?(fcMap[l.product_code]!==undefined?fcMap[l.product_code]:'—'):'';
+return `<tr class="row-${l.color_status}"><td>${esc(l.product_code)}</td><td>${offLabel[l.month_offset]||l.month_offset}</td><td>${l.inventory_begin}</td><td>${l.month_offset===0?l.sales_plan:`<input type="number" value="${l.sales_plan}" style="width:70px" data-id="${l.id}" data-f="sales_plan">`}</td><td style="color:#0891b2">${sa}</td><td>${l.month_offset===0?l.production_plan:`<input type="number" value="${l.production_plan}" style="width:70px" data-id="${l.id}" data-f="production_plan">`}</td><td style="color:#0891b2">${pa}</td><td style="color:#7c3aed;font-weight:600">${fcv}</td><td><b>${l.inventory_end}</b></td><td>${l.month_offset===0?l.safety_stock:`<input type="number" value="${l.safety_stock}" style="width:70px" data-id="${l.id}" data-f="safety_stock">`}</td><td><span class="badge st-${l.color_status}">${l.color_status}</span></td></tr>`;
+}).join(''):'<tr><td colspan=11 class="em">无PSI数据（请先选择PSI，或点「从EBMS订单预填销售计划」）</td></tr>';
 }
 async function savePsi(){
 const lines=[];
@@ -1105,8 +1140,25 @@ document.getElementById('auditStdBody').innerHTML=std.standards.map(s=>`<tr><td>
 async function loadDept(){
 const period=await api('/dashboard');
 document.getElementById('deptPeriod').textContent=period.current_period||'-';
-// 并行加载所有部门
+loadBalance();
 await Promise.all([loadDeptSales(),loadDeptRd(),loadDeptPlan(),loadDeptPur(),loadDeptQty(),loadDeptEng()]);
+}
+// 供需平衡表（C档合并主表）
+async function loadBalance(){
+try{
+const d=await api('/supply-balance?period_month='+encodeURIComponent(GLOBAL_PERIOD||''));
+const s=d.summary||{};
+const sm=document.getElementById('balSummary');
+if(sm)sm.innerHTML=[
+{c:'#1565c0',n:s.total||0,l:'产品数'},
+{c:'#e74c3c',n:s.gap_products||0,l:'有缺口产品'},
+{c:'#c62828',n:s.total_gap||0,l:'总缺口量'},
+{c:'#b45309',n:s.shortage_products||0,l:'物料短缺产品'}
+].map(x=>`<div class="sc"><div class="n" style="color:${x.c}">${x.n}</div><div class="l">${x.l}</div></div>`).join('');
+const rows=d.rows||[];
+const bd=document.getElementById('balBody');
+if(bd)bd.innerHTML=rows.length?rows.map(r=>`<tr style="${r.gap>0?'background:#fff5f5':''}"><td>${esc(r.product_code)}</td><td>${r.demand}</td><td>${r.production_plan}</td><td>${r.inventory}</td><td style="font-weight:600;color:${r.gap>0?'#c62828':'#2e7d32'}">${r.gap}</td><td style="color:${r.shortage>0?'#c62828':'#999'}">${r.shortage}</td><td>${esc(r.owner)}</td></tr>`).join(''):'<tr><td colspan=7 class="em">无供需数据（请先在 PSI 补当期数据）</td></tr>';
+}catch(e){const el=document.getElementById('balBody');if(el)el.innerHTML='<tr><td colspan=7 class="em">供需平衡表加载失败</td></tr>';}
 }
 
 async function loadDeptSales(){

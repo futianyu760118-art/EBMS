@@ -1150,6 +1150,17 @@ router.get('/sop/plan', (req, res) => {
         .slice(0, 5)
         .map(a => ({ id: a.id, level: a.level, rule_code: a.rule_code, message: a.message, triggered_at: a.triggered_at }))
     },
+    // 上期决议对账（稽核报告降后台：只把一个兑现率数字送上驾驶舱）
+    reconcile: (() => {
+      const pActions = getTable('sop_actions').all().filter(a => String(a.due_date || '').slice(0, 7) === prevPeriod);
+      const closedN = pActions.filter(a => a.status === 'CLOSED').length;
+      return {
+        prev_period: prevPeriod,
+        total: pActions.length,
+        closed: closedN,
+        rate: pActions.length ? Math.round(closedN / pActions.length * 100) : null
+      };
+    })(),
     forecast_accuracy: {
       forecast_qty: fcQty,
       actual_qty: qtyTotal,
@@ -1433,6 +1444,37 @@ router.get('/audit/data-standard', (req, res) => {
 // ============================================================
 
 // 销售中心报告
+// 供需平衡表（C档：6 份部门报告合成一张「需求→产能→齐套→库存→缺口→谁补」主表）
+router.get('/supply-balance', (req, res) => {
+  const period = reqPeriod(req);
+  const headers = getTable('psi_headers').all();
+  const header = headers.find(h => h.period_month === period)
+    || headers.slice().sort((a, b) => (b.period_month || '').localeCompare(a.period_month || ''))[0];
+  const lines = header
+    ? getTable('psi_lines').all().filter(l => Number(l.header_id) === Number(header.id) && Number(l.month_offset) === 0)
+    : [];
+  const caps = getTable('supply_capacities').all().filter(c => c.period_month === (header ? header.period_month : period));
+  const mrps = getTable('supply_mrps').all();
+  const rows = lines.map(l => {
+    const demand = toNum(l.sales_plan);
+    const produce = toNum(l.production_plan);
+    const begin = toNum(l.inventory_begin);
+    const end = (l.inventory_actual !== undefined && l.inventory_actual !== null) ? toNum(l.inventory_actual) : toNum(l.inventory_end);
+    const gap = demand - produce - begin;
+    const shortage = mrps.filter(m => m.product_code === l.product_code).reduce((s, m) => s + toNum(m.shortage_qty), 0);
+    const owner = gap > 0 ? (shortage > 0 ? '采购补料' : '计划增排') : '平衡';
+    return { product_code: l.product_code, demand, production_plan: produce, inventory: end, gap, shortage, owner };
+  }).sort((a, b) => b.gap - a.gap);
+  const summary = {
+    period: header ? header.period_month : period,
+    total: rows.length,
+    gap_products: rows.filter(r => r.gap > 0).length,
+    total_gap: rows.reduce((s, r) => s + r.gap, 0),
+    shortage_products: rows.filter(r => r.shortage > 0).length
+  };
+  res.json({ summary, rows: rows.slice(0, 200), capacity: caps });
+});
+
 router.get('/dept/sales', (req, res) => {
   const orders = ebmsTable('orders').all();
   const fc = getTable('demand_forecasts'); fc._invalidate();
