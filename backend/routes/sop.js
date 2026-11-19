@@ -471,6 +471,13 @@ router.get('/actions', (req, res) => {
 router.post('/actions', async (req, res) => {
   const t = getTable('sop_actions');
   const b = req.body || {};
+  // 待办必须同时有责任人 + 截止日（诊断报告：有效待办判定标准）
+  if (!b.owner_name || !String(b.owner_name).trim()) {
+    return res.status(400).json({ error: '责任人为必填项', code: 'OWNER_REQUIRED' });
+  }
+  if (!b.due_date || !String(b.due_date).trim()) {
+    return res.status(400).json({ error: '截止日期为必填项', code: 'DUE_DATE_REQUIRED' });
+  }
   const seq = t.all().length + 1;
   const ts = now();
   const r = await t.insert({

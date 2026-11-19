@@ -996,6 +996,9 @@ openModal(`<h3>新建Action</h3><div class="fg"><label>任务描述</label><text
 <button class="btn b1" onclick="submitAction()">创建</button> <button class="btn" style="background:#eee" onclick="closeModal()">取消</button>`);
 }
 async function submitAction(){
+if(!ac_desc.value.trim()){alert('请填写任务描述');return;}
+if(!ac_owner.value.trim()){alert('请填写责任人（待办必须有责任人）');return;}
+if(!ac_due.value){alert('请选择截止日期（待办必须有时间）');return;}
 await api('/actions',{method:'POST',body:JSON.stringify({description:ac_desc.value,owner_name:ac_owner.value,owner_role:ac_role.value,due_date:ac_due.value,priority:ac_pri.value})});
 closeModal();loadActions();
 }

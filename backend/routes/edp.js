@@ -117,13 +117,14 @@ router.post('/sop/sync', requirePerm(PERM), async (req, res) => {
       syncResults.push({ dataset: code, status: 'failed', error: e.message });
     }
   }
-  let psi = null, actions = null;
+  let psi = null, actions = null, meetings = null;
   try { psi = await sopSync.syncPsiFromEdp(periodMonth); } catch (e) { psi = { ok: false, error: e.message }; }
   // 待办只拉近 N 个月（默认 2 个月，2 个月以前不获取）；支持 cutoff_date 自定义截止日
   try {
     actions = await sopSync.syncActionsFromEdp({ months_back: body.months_back, cutoff_date: body.cutoff_date });
   } catch (e) { actions = { ok: false, error: e.message }; }
-  res.json({ ok: true, dataset_syncs: syncResults, psi, actions });
+  try { meetings = await sopSync.syncMeetingsFromEdp(); } catch (e) { meetings = { ok: false, error: e.message }; }
+  res.json({ ok: true, dataset_syncs: syncResults, psi, actions, meetings });
 });
 
 module.exports = router;

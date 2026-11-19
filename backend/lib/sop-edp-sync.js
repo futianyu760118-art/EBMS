@@ -179,3 +179,34 @@ async function syncActionsFromEdp(opts) {
 }
 
 module.exports = { syncPsiFromEdp, syncActionsFromEdp, monthsAgoDate };
+module.exports.syncMeetingsFromEdp = syncMeetingsFromEdp;
+
+// ===== 会议助手会议 → sop_meetings（EDP meeting-assistant-meetings，含 organizer/date/participants）=====
+async function syncMeetingsFromEdp(opts) {
+  const o = opts || {};
+  const rows = edpRows('meeting-assistant-meetings');
+  const t = getTable('sop_meetings');
+  let created = 0, updated = 0, skipped = 0;
+  for (const r of rows) {
+    const p = r.payload || {};
+    const a = p.attributes || p;
+    const srcId = a.id || p.source_id || r.row_pk;
+    if (!srcId) { skipped++; continue; }
+    const code = 'EDP-MTG-' + String(srcId);
+    const exist = t.all().find((m) => m.meeting_code === code);
+    const rec = {
+      meeting_code: code,
+      meeting_type: a.type || 'REVIEW',
+      meeting_date: String(a.meeting_date || a.created_at || '').slice(0, 10),
+      status: (a.status === 'finished' || a.status === 'closed') ? 'CLOSED' : 'SCHEDULED',
+      title: a.title || ('会议 ' + srcId),
+      organizer: a.organizer || '',
+      participants: Array.isArray(a.participants) ? a.participants : [],
+      department: a.department || '',
+      source_system: '会议助手'
+    };
+    if (exist) { await t.update(exist.id, rec); updated++; }
+    else { await t.insert(Object.assign({}, rec, { created_at: now() })); created++; }
+  }
+  return { ok: true, source_rows: rows.length, created, updated, skipped };
+}
