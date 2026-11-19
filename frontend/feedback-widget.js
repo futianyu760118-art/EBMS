@@ -50,6 +50,13 @@
       + '  <div class="fb-tabs"><button class="fb-tab active" data-tab="submit">提交反馈</button><button class="fb-tab" data-tab="mine">我的反馈 <b id="fbMineCnt"></b></button></div>'
       + '  <div class="fb-body">'
       + '    <div class="fb-pane active" id="fbPaneSubmit">'
+      + '      <div id="fbReceipt" style="display:none;padding:30px 0;text-align:center">'
+      + '        <div style="font-size:36px;color:#16a34a;line-height:1">✓</div>'
+      + '        <div style="font-size:15px;font-weight:700;margin:10px 0 4px">提交成功</div>'
+      + '        <div style="font-size:12px;color:#64748b;margin-bottom:16px">反馈编号：<b id="fbReceiptId"></b>　状态：待处理</div>'
+      + '        <button class="fb-btn primary" id="fbNewBtn">再提一条</button>'
+      + '      </div>'
+      + '      <div id="fbFormWrap">'
       + '      <div class="fb-row"><label>类型</label><select id="fbType">'
       + '        <option value="bug">缺陷（功能异常）</option><option value="feature">功能需求</option>'
       + '        <option value="improvement">改进建议</option><option value="question">问题咨询</option></select></div>'
@@ -58,8 +65,9 @@
       + '      <div class="fb-row"><label>标题 <i>*</i></label><input id="fbTitle" maxlength="80" placeholder="一句话说明问题或建议"></div>'
       + '      <div class="fb-row"><label>详细描述</label><textarea id="fbDesc" maxlength="2000" placeholder="操作步骤、期望结果、实际结果（便于快速定位）"></textarea></div>'
       + '      <div class="fb-row"><label>截图链接（选填）</label><input id="fbShot" placeholder="可粘贴图片链接"></div>'
-      + '      <div class="fb-meta">所属页面：<b id="fbModule"></b>　提交人：<b id="fbSubmitter"></b></div>'
+      + '      <div class="fb-meta">所在页面：<b id="fbModule"></b>　提交人：<b id="fbSubmitter"></b></div>'
       + '      <div class="fb-actions"><button class="fb-btn primary" id="fbSubmit">提交反馈</button></div>'
+      + '      </div>'
       + '    </div>'
       + '    <div class="fb-pane" id="fbPaneMine"><div id="fbMineList" class="fb-list"><div class="fb-empty">加载中…</div></div></div>'
       + '  </div>'
@@ -68,20 +76,20 @@
 
     var style = document.createElement('style');
     style.textContent = ''
-      + '#feedbackWidget{position:fixed;right:84px;bottom:20px;z-index:99998;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}'
-      + '#fbFab{display:flex;align-items:center;gap:6px;height:42px;padding:0 16px;border:none;border-radius:21px;background:#2563eb;color:#fff;'
-      + 'font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(37,99,235,.35);transition:transform .15s,background .15s}'
-      + '#fbFab:hover{background:#1d4ed8;transform:translateY(-1px)}'
-      + '#fbFab .fb-ico{font-size:15px}'
-      + '#fbPanel{display:none;position:absolute;bottom:56px;right:0;width:440px;max-width:calc(100vw - 24px);background:#fff;border-radius:12px;'
-      + 'box-shadow:0 12px 40px rgba(16,24,40,.18);overflow:hidden;border:1px solid #e3e8ef}'
-      + '#fbPanel.open{display:block}'
+      + '#feedbackWidget{position:fixed;right:24px;bottom:24px;z-index:99998;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}'
+      + '#fbFab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;width:56px;height:56px;padding:0;border:none;border-radius:50%;background:#2563eb;color:#fff;'
+      + 'cursor:grab;touch-action:none;user-select:none;box-shadow:0 4px 12px rgba(0,0,0,.22);transition:background .16s,transform .16s}'
+      + '#fbFab:hover{background:#1d4ed8}#fbFab:active{cursor:grabbing}'
+      + '#fbFab .fb-ico{font-size:20px;line-height:1}#fbFab .fb-txt{font-size:11px;line-height:1}'
+      + '#fbPanel{position:fixed;top:0;right:0;bottom:0;width:520px;max-width:100vw;background:#fff;border-left:1px solid #e3e8ef;'
+      + 'box-shadow:-8px 0 40px rgba(16,24,40,.18);transform:translateX(100%);transition:transform .25s ease;display:flex;flex-direction:column;z-index:99999;overflow:hidden}'
+      + '#fbPanel.open{transform:translateX(0)}'
       + '.fb-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#172033;color:#fff;font-size:14px;font-weight:600}'
       + '.fb-head .fb-close{cursor:pointer;font-size:20px;line-height:1;opacity:.8}.fb-head .fb-close:hover{opacity:1}'
       + '.fb-tabs{display:flex;border-bottom:1px solid #eef1f6}#fbMineCnt{color:#2563eb}'
       + '.fb-tab{flex:1;padding:10px;border:none;background:none;cursor:pointer;font-size:13px;color:#536176;border-bottom:2px solid transparent}'
       + '.fb-tab.active{color:#2563eb;border-bottom-color:#2563eb;font-weight:600}'
-      + '.fb-body{max-height:62vh;overflow-y:auto}'
+      + '.fb-body{flex:1;overflow-y:auto}'
       + '.fb-pane{display:none;padding:14px 16px}.fb-pane.active{display:block}'
       + '.fb-row{margin-bottom:10px}.fb-row label{display:block;font-size:12px;color:#536176;font-weight:600;margin-bottom:5px}'
       + '.fb-row label i{color:#dc2626;font-style:normal}'
@@ -122,10 +130,37 @@
     document.getElementById('fbSubmitter').textContent = currentUserName() || '当前用户';
 
     var panel = document.getElementById('fbPanel');
-    document.getElementById('fbFab').onclick = function () {
-      panel.classList.toggle('open');
-      if (panel.classList.contains('open')) loadMine();
-    };
+    var fab = document.getElementById('fbFab');
+    // 悬浮球可拖拽（M04 风格）：拖动超过 4px 视为拖拽，不触发打开
+    (function () {
+      var drag = { moved: false, sx: 0, sy: 0, oleft: 0, otop: 0 };
+      fab.addEventListener('pointerdown', function (e) {
+        drag.moved = false; drag.sx = e.clientX; drag.sy = e.clientY;
+        var r = fab.getBoundingClientRect();
+        drag.oleft = r.left; drag.otop = r.top;
+        try { fab.setPointerCapture(e.pointerId); } catch (_) {}
+        function onMove(ev) {
+          var dx = ev.clientX - drag.sx, dy = ev.clientY - drag.sy;
+          if (!drag.moved && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) drag.moved = true;
+          if (!drag.moved) return;
+          var s = 56;
+          fab.style.left = Math.max(0, Math.min(window.innerWidth - s, drag.oleft + dx)) + 'px';
+          fab.style.top = Math.max(0, Math.min(window.innerHeight - s, drag.otop + dy)) + 'px';
+          fab.style.right = 'auto'; fab.style.bottom = 'auto';
+        }
+        function onUp() {
+          fab.removeEventListener('pointermove', onMove);
+          fab.removeEventListener('pointerup', onUp);
+        }
+        fab.addEventListener('pointermove', onMove);
+        fab.addEventListener('pointerup', onUp, { once: true });
+      });
+      fab.addEventListener('click', function () {
+        if (drag.moved) return;
+        panel.classList.toggle('open');
+        if (panel.classList.contains('open')) loadMine();
+      });
+    })();
     root.querySelector('.fb-close').onclick = function () { panel.classList.remove('open'); };
 
     root.querySelectorAll('.fb-tab').forEach(function (btn) {
@@ -158,13 +193,26 @@
         .then(function (res) {
           btn.disabled = false; btn.textContent = '提交反馈';
           if (!res.ok) { toast((res.d && res.d.error) || '提交失败', false); return; }
-          toast('反馈已提交，感谢您的反馈！');
+          // 提交回执（M04 风格：编号 + 状态 + 再提一条）
+          var created = (res.d && res.d.data) || {};
+          var rid = document.getElementById('fbReceiptId');
+          if (rid) rid.textContent = created.id ? ('#' + created.id) : '—';
+          var fw = document.getElementById('fbFormWrap');
+          var rc = document.getElementById('fbReceipt');
+          if (fw) fw.style.display = 'none';
+          if (rc) rc.style.display = 'block';
           document.getElementById('fbTitle').value = '';
           document.getElementById('fbDesc').value = '';
           document.getElementById('fbShot').value = '';
-          loadMine();
         })
         .catch(function () { btn.disabled = false; btn.textContent = '提交反馈'; toast('网络异常，请稍后重试', false); });
+    };
+    var newBtn = document.getElementById('fbNewBtn');
+    if (newBtn) newBtn.onclick = function () {
+      var fw = document.getElementById('fbFormWrap');
+      var rc = document.getElementById('fbReceipt');
+      if (rc) rc.style.display = 'none';
+      if (fw) fw.style.display = 'block';
     };
 
     // 延迟按权限校验（permission-check.js 在本脚本之后加载）

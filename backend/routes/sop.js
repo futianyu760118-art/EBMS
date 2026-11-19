@@ -450,7 +450,22 @@ router.get('/actions', (req, res) => {
   rows = rows.map(r => ({ ...r, overdue_flag: r.due_date && r.due_date < today && r.status !== 'CLOSED' ? 1 : 0 }));
   if (overdue_only === 'true') rows = rows.filter(r => r.overdue_flag);
   rows.sort((a, b) => (a.priority || '').localeCompare(b.priority || '') || (a.due_date || '').localeCompare(b.due_date || ''));
-  res.json({ data: rows, total: rows.length, overdue_count: rows.filter(r => r.overdue_flag).length });
+  // 分区统计 + 有效待办（有责任人 + 有截止日 + 未关闭；无责任人/截止日不计入有效，避免待办虚高）
+  const isImported = (r) => r.source_system === '会议助手';
+  const isClosed = (r) => r.status === 'CLOSED' || r.status === 'CANCELLED';
+  const valid = rows.filter(r => !isClosed(r) && r.owner_name && r.due_date);
+  const bySource = {};
+  rows.forEach(r => { const s = r.source_system || 'SOP'; bySource[s] = (bySource[s] || 0) + 1; });
+  res.json({
+    data: rows, total: rows.length,
+    overdue_count: rows.filter(r => r.overdue_flag).length,
+    by_source: bySource,
+    resolution_count: rows.filter(r => !isImported(r)).length,
+    imported_count: rows.filter(isImported).length,
+    valid_count: valid.length,
+    invalid_no_owner: rows.filter(r => !isClosed(r) && !r.owner_name).length,
+    invalid_no_due: rows.filter(r => !isClosed(r) && !r.due_date).length
+  });
 });
 
 router.post('/actions', async (req, res) => {
@@ -1091,6 +1106,11 @@ router.get('/sop/plan', (req, res) => {
   const qtyDone = cur.orders.reduce((s, o) => s + toNum(o.completed_qty), 0);
   const kpiActT = getTable('kpi_actuals'); kpiActT._invalidate();
   const kpiAct = kpiActT.all().filter(r => r.period_month === curPeriod);
+  // 预警未解决项（假绿灯修复：红灯数应反映真实未解决预警，而非只数当期 KPI 表）
+  const alertT = getTable('alert_logs'); alertT._invalidate();
+  const openAlerts = alertT.all().filter(a => !a.is_resolved);
+  const alertsByLevel = { BLOCK: 0, R: 0, Y: 0 };
+  openAlerts.forEach(a => { if (alertsByLevel[a.level] !== undefined) alertsByLevel[a.level]++; });
   const fcT = getTable('demand_forecasts'); fcT._invalidate();
   const curFc = fcT.all().filter(f => f.period_month === curPeriod);
   const fcQty = curFc.reduce((s, f) => s + toNum(f.forecast_qty), 0);
@@ -1113,6 +1133,22 @@ router.get('/sop/plan', (req, res) => {
       yellow: kpiAct.filter(r => r.status === 'Y').length,
       green: kpiAct.filter(r => r.status === 'G').length,
       total: kpiAct.length
+    },
+    alerts: {
+      unresolved: openAlerts.length,
+      block: alertsByLevel.BLOCK,
+      red: alertsByLevel.R,
+      yellow: alertsByLevel.Y,
+      top: openAlerts
+        .slice()
+        .sort((a, b) => {
+          const rank = { BLOCK: 0, R: 1, Y: 2 };
+          const ra = rank[a.level] === undefined ? 3 : rank[a.level];
+          const rb = rank[b.level] === undefined ? 3 : rank[b.level];
+          return ra - rb;
+        })
+        .slice(0, 5)
+        .map(a => ({ id: a.id, level: a.level, rule_code: a.rule_code, message: a.message, triggered_at: a.triggered_at }))
     },
     forecast_accuracy: {
       forecast_qty: fcQty,

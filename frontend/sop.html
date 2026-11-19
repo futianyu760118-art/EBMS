@@ -123,6 +123,7 @@ select:disabled,input:disabled{background:#f5f5f5;color:#999}
 
 <div class="panel"><h3> 本月复盘  公司这个月做得怎么样 <span id="rvPeriod" style="font-size:12px;color:#999;font-weight:400"></span></h3>
 <div class="sg" id="rvCards"></div>
+<div id="blockBanner"></div>
 <div class="grid2">
 <div><h4 style="margin:6px 0">本月重点产品需求（BOM）</h4><div class="tbl-wrap" style="max-height:24vh"><table><thead><tr><th>BOM编码</th><th>BOM号</th><th>名称</th><th>数量</th><th>金额</th><th>单数</th></tr></thead><tbody id="rvProdBody"></tbody></table></div></div>
 <div><h4 style="margin:6px 0">️ 逾期未交付订单</h4><div class="tbl-wrap" style="max-height:24vh"><table><thead><tr><th>订单号</th><th>客户</th><th>逾期天</th><th>数量</th><th>已完成</th></tr></thead><tbody id="rvOverdueBody"></tbody></table></div></div>
@@ -739,10 +740,19 @@ document.getElementById('rvCards').innerHTML=[
 {c:'#c62828',n:rvO.overdue,l:'逾期订单'},
 {c:'#8e44ad',n:rvO.qty.toLocaleString(),l:'总需求数量'},
 {c:'#16a085',n:rv.forecast_accuracy.rate+'%',l:'预测达成率(实/预测)'},
-{c:rv.kpi.red>0?'#e74c3c':'#27ae60',n:rv.kpi.red,l:'本月红灯KPI'},
-{c:'#f39c12',n:rv.kpi.yellow,l:'黄灯KPI'},
+{c:(rv.alerts&&(rv.alerts.block>0||rv.alerts.red>0))?'#e74c3c':'#27ae60',n:(rv.alerts?rv.alerts.unresolved:0),l:'未解决预警(红'+(rv.alerts?rv.alerts.red:0)+'/BLOCK'+(rv.alerts?rv.alerts.block:0)+')'},
+{c:'#f39c12',n:(rv.alerts?rv.alerts.yellow:0),l:'未解决预警(黄)'},
 {c:'#7f8c8d',n:money(rvO.amount),l:'订单金额'}
 ].map(x=>`<div class="sc"><div class="n" style="color:${x.c}">${x.n}</div><div class="l">${x.l}</div></div>`).join('');
+// BLOCK 级硬拦截置顶红色横幅（假绿灯修复：BLOCK 必须最醒目）
+(function(){
+const bb=document.getElementById('blockBanner');
+if(!bb)return;
+if(rv.alerts&&rv.alerts.block>0){
+const msgs=(rv.alerts.top||[]).filter(t=>t.level==='BLOCK').map(t=>esc(t.message)).join('；')||'（详见预警中心）';
+bb.innerHTML=`<div style="background:#fdecea;border:1px solid #e5484d;color:#b3261e;padding:10px 14px;border-radius:8px;margin-bottom:10px;font-weight:700;font-size:13px">🚨 BLOCK 级硬拦截未解决 ${rv.alerts.block} 项：${msgs}</div>`;
+}else{bb.innerHTML='';}
+})();
 document.getElementById('rvProdBody').innerHTML=rv.product_list&&rv.product_list.length?rv.product_list.map(p=>`<tr><td style="font-size:11px">${esc(p.product_code)}</td><td style="font-size:11px;color:#667eea">${esc(p.bom_no||'-')}</td><td style="font-size:11px">${esc(p.product_name||'-').slice(0,16)}</td><td>${p.qty}</td><td>${p.amount.toFixed(0)}</td><td>${p.order_count}</td></tr>`).join(''):'<tr><td colspan=6 class="em">无</td></tr>';
 document.getElementById('rvOverdueBody').innerHTML=rv.overdue_orders.length?rv.overdue_orders.map(o=>`<tr style="background:#fff5f5"><td>${esc(o.order_no)}</td><td>${esc(o.customer)}</td><td><b class="ov">${o.overdue_days}天</b></td><td>${o.qty}</td><td>${o.completed}</td></tr>`).join(''):'<tr><td colspan=5 class="em">本月无逾期</td></tr>';
 enhanceTable('rvProdBody');enhanceTable('rvOverdueBody');
@@ -766,7 +776,7 @@ const su=pl.supply;
 const kitCol=su.kit_rate>=80?'#27ae60':su.kit_rate>=50?'#f39c12':'#e74c3c';
 document.getElementById('planSupply').innerHTML=`外购物料 <b>${su.purchased_material_count}</b> 种  采购单 <b>${su.po_total}</b> 单（draft <b class="${su.po_draft>0?'ov':''}">${su.po_draft}</b>） 齐套率 <b style="color:${kitCol}">${su.kit_rate}%</b><div style="color:#999;font-size:11px;margin-top:3px">${esc(su.note)}</div>`;
 document.getElementById('planCapBody').innerHTML=pl.capacity.length?pl.capacity.map(c=>`<tr style="${c.overload?'background:#fff5f5':''}"><td>${esc(c.line_code)}</td><td>${c.period}</td><td>${c.available_days}</td><td style="font-weight:600;color:${c.overload?'#c62828':'#2e7d32'}">${c.load_rate}%</td><td style="font-size:11px">${esc(c.bottleneck||'-')}</td></tr>`).join(''):'<tr><td colspan=5 class="em">无产能数据</td></tr>';
-document.getElementById('planRedBody').innerHTML=pl.red_actions.length?pl.red_actions.map(r=>`<div style="padding:6px 0;border-bottom:1px dashed #ffcdd2;font-size:13px"> <b>${esc(r.kpi_name)}</b>（${esc(r.kpi_code)}）实际 ${r.actual} vs 目标 ${r.target} ${r.has_action?'<span class="badge st-G">已有Action</span>':'<span class="badge st-R">未制定对策</span>'}</div>`).join(''):'<div style="color:#2e7d32;padding:4px"> 本月无红灯KPI</div>';
+document.getElementById('planRedBody').innerHTML=pl.red_actions.length?pl.red_actions.map(r=>`<div style="padding:6px 0;border-bottom:1px dashed #ffcdd2;font-size:13px"> <b>${esc(r.kpi_name)}</b>（${esc(r.kpi_code)}）实际 ${r.actual} vs 目标 ${r.target} ${r.has_action?'<span class="badge st-G">已有Action</span>':'<span class="badge st-R">未制定对策</span>'}</div>`).join(''):((rv.alerts&&rv.alerts.top&&rv.alerts.top.length)?rv.alerts.top.map(a=>`<div style="padding:6px 0;border-bottom:1px dashed #ffcdd2;font-size:13px"><span class="badge ${a.level==='BLOCK'?'st-R':(a.level==='R'?'st-R':'st-Y')}">${esc(a.level)}</span> ${esc(a.message)}</div>`).join(''):'<div style="color:#2e7d32;padding:4px"> 本月无未解决预警/红灯</div>');
 enhanceTable('planProdBody');enhanceTable('planCapBody');
 }
 
@@ -914,8 +924,28 @@ const st=document.getElementById('actStatus').value,pri=document.getElementById(
 let q='';
 if(st)q+='&status='+st;if(pri)q+='&priority='+pri;if(od)q+='&overdue_only=true';
 const d=await api('/actions'+(q?'?'+q.slice(1):''));
-document.getElementById('actSummary').innerHTML=`<div class="sc"><div class="n" style="color:#1565c0">${d.total}</div><div class="l">总数</div></div><div class="sc"><div class="n" style="color:#c62828">${d.overdue_count}</div><div class="l">逾期</div></div>`;
-document.getElementById('actBody').innerHTML=d.data.length?d.data.map(a=>`<tr style="${a.overdue_flag?'background:#fff5f5':''}"><td>${esc(a.action_code)}</td><td>${esc(a.description).slice(0,50)}</td><td>${esc(a.owner_name||a.owner_role||'')}</td><td class="${a.overdue_flag?'ov':''}">${a.due_date||'-'}</td><td><span class="badge pr-${a.priority}">${a.priority}</span></td><td><span class="badge as-${a.status}">${a.status}</span></td><td>${a.escalation_level>0?'<b style="color:#c62828">L'+a.escalation_level+'</b>':'-'}</td><td><select onchange="updActStatus(${a.id},this.value)" style="padding:3px;font-size:11px"><option value="">改状态</option><option value="IN_PROGRESS">进行中</option><option value="VERIFYING">待验证</option><option value="CLOSED">已闭环</option></select></td></tr>`).join(''):'<tr><td colspan=8 class="em">无Action</td></tr>';
+// 摘要：有效待办（有责任人+截止日+未关闭）不再虚高；SOP决议 vs 会议助手导入分区
+document.getElementById('actSummary').innerHTML=[
+{c:'#1565c0',n:(d.valid_count!=null?d.valid_count:d.total),l:'有效待办'},
+{c:'#6b7280',n:d.total,l:'总数'},
+{c:'#c62828',n:d.overdue_count,l:'逾期'},
+{c:'#7c3aed',n:(d.resolution_count!=null?d.resolution_count:'-'),l:'SOP决议项'},
+{c:'#0891b2',n:(d.imported_count!=null?d.imported_count:'-'),l:'会议助手导入'},
+{c:'#b45309',n:(d.invalid_no_owner!=null?d.invalid_no_owner:'-'),l:'缺责任人'},
+{c:'#b45309',n:(d.invalid_no_due!=null?d.invalid_no_due:'-'),l:'缺截止日'}
+].map(x=>`<div class="sc"><div class="n" style="color:${x.c}">${x.n}</div><div class="l">${x.l}</div></div>`).join('');
+const isImported=a=>a.source_system==='会议助手';
+const rowHtml=a=>{
+const noOwner=!a.owner_name,noDue=!a.due_date;
+const flags=(noOwner||noDue)?`<span style="font-size:10px;color:#b45309;margin-left:4px">${[noOwner?'缺责任人':'',noDue?'缺截止日':''].filter(Boolean).join('/')}</span>`:'';
+return `<tr style="${a.overdue_flag?'background:#fff5f5':''}"><td>${esc(a.action_code)}</td><td>${esc(a.description).slice(0,50)}${flags}</td><td>${esc(a.owner_name||a.owner_role||'')}</td><td class="${a.overdue_flag?'ov':''}">${a.due_date||'-'}</td><td><span class="badge pr-${a.priority}">${a.priority}</span></td><td><span class="badge as-${a.status}">${a.status}</span></td><td>${a.escalation_level>0?'<b style="color:#c62828">L'+a.escalation_level+'</b>':'-'}</td><td><select onchange="updActStatus(${a.id},this.value)" style="padding:3px;font-size:11px"><option value="">改状态</option><option value="IN_PROGRESS">进行中</option><option value="VERIFYING">待验证</option><option value="CLOSED">已闭环</option></select></td></tr>`;
+};
+const reso=d.data.filter(a=>!isImported(a));
+const imp=d.data.filter(isImported);
+let html='';
+if(reso.length){html+=`<tr><td colspan="8" style="background:#eef2ff;font-weight:700;color:#4338ca">SOP 决议项（${reso.length}）</td></tr>`+reso.map(rowHtml).join('');}
+if(imp.length){html+=`<tr><td colspan="8" style="background:#ecfeff;font-weight:700;color:#0e7490">会议助手导入项（${imp.length}，无责任人/截止日不计入有效待办）</td></tr>`+imp.map(rowHtml).join('');}
+document.getElementById('actBody').innerHTML=d.data.length?html:'<tr><td colspan=8 class="em">无Action</td></tr>';
 }
 async function updActStatus(id,status){if(!status)return;await api('/actions/'+id+'/status',{method:'PUT',body:JSON.stringify({status})});loadActions();}
 function openActionModal(){
