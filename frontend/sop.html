@@ -6,6 +6,10 @@
 .tv{display:flex;gap:0;border-bottom:2px solid #eee;margin-bottom:16px;overflow-x:auto}
 .tv button{padding:10px 16px;border:none;background:none;cursor:pointer;font-size:13px;color:#666;border-bottom:3px solid transparent;font-weight:500;white-space:nowrap}
 .tv button.ac{color:#667eea;border-bottom-color:#667eea;font-weight:600}
+.tv button.core-hidden{display:none}
+.sop-view-switch{display:inline-flex;border:1px solid #e3e8ef;border-radius:8px;overflow:hidden;background:#fff}
+.sop-view-switch button{padding:7px 14px;border:none;background:none;cursor:pointer;font-size:12.5px;color:#64748b;font-weight:600}
+.sop-view-switch button.active{background:#667eea;color:#fff}
 .tc{display:none}.tc.ac{display:block}
 .sb{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
 .sb input,.sb select{padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px}
@@ -86,20 +90,28 @@ select:disabled,input:disabled{background:#f5f5f5;color:#999}
 </div>
 </div>
 
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+<div class="sop-view-switch" id="sopViewSwitch">
+<button type="button" data-mode="meeting" onclick="setSopView('meeting')">会议视图（5）</button>
+<button type="button" data-mode="all" onclick="setSopView('all')">全部工具（13）</button>
+</div>
+<span style="font-size:12px;color:#94a3b8" id="sopViewHint">会议视图仅显示 5 个核心标签；其余移至「全部工具」，数据与接口不变，可随时切回。</span>
+</div>
+
 <div class="tv" id="tabNav">
-<button class="ac" onclick="swTab('dash',this)">驾驶舱</button>
-<button onclick="swTab('kpi',this)">KPI指标</button>
-<button onclick="swTab('psi',this)">PSI产销存</button>
-<button onclick="swTab('supply',this)">供应评审</button>
-<button onclick="swTab('forecast',this)">需求预测</button>
-<button onclick="swTab('meeting',this)">会议管理</button>
-<button onclick="swTab('action',this)">待办Action</button>
-<button onclick="swTab('alert',this)">预警中心</button>
-<button onclick="swTab('selfchk',this)">每周自检</button>
-<button onclick="swTab('fetch',this)">数据获取</button>
-<button onclick="swTab('ebms',this)">EBMS关联数据</button>
-<button onclick="swTab('audit',this)">稽核报告</button>
-<button onclick="swTab('dept',this)">部门报告</button>
+<button class="ac" data-core="1" onclick="swTab('dash',this)">驾驶舱</button>
+<button data-core="0" onclick="swTab('kpi',this)">KPI指标</button>
+<button data-core="1" onclick="swTab('psi',this)">PSI产销存</button>
+<button data-core="1" onclick="swTab('supply',this)">供应评审</button>
+<button data-core="0" onclick="swTab('forecast',this)">需求预测</button>
+<button data-core="1" onclick="swTab('meeting',this)">会议管理</button>
+<button data-core="1" onclick="swTab('action',this)">待办Action</button>
+<button data-core="0" onclick="swTab('alert',this)">预警中心</button>
+<button data-core="0" onclick="swTab('selfchk',this)">每周自检</button>
+<button data-core="0" onclick="swTab('fetch',this)">数据获取</button>
+<button data-core="0" onclick="swTab('ebms',this)">EBMS关联数据</button>
+<button data-core="0" onclick="swTab('audit',this)">稽核报告</button>
+<button data-core="0" onclick="swTab('dept',this)">部门报告</button>
 </div>
 
 <!-- ===== 驾驶舱：本月复盘 → 下月预测 → 规划调整 ===== -->
@@ -360,6 +372,28 @@ const API='/api/sop';
 function uid(){return localStorage.getItem('currentUserId')||1;}
 async function api(path,opts){opts=opts||{};const r=await fetch(API+path,Object.assign({headers:{'x-user-id':uid(),'Content-Type':'application/json'}},opts));return r.json();}
 function swTab(id,btn){document.querySelectorAll('.tc').forEach(t=>t.classList.remove('ac'));document.querySelectorAll('#tabNav button').forEach(b=>b.classList.remove('ac'));document.getElementById('tab-'+id).classList.add('ac');btn.classList.add('ac');}
+// ===== 会议视图 / 全部工具 切换（标签精简：仅隐藏导航，不改数据不改接口，可随时切回）=====
+const SOP_VIEW_CORE_NOTE='会议视图仅显示驾驶舱/PSI/供应评审/会议/待办 5 个核心标签；其余标签移至「全部工具」，功能与历史数据完整保留，可随时切回。';
+function applySopView(mode){
+  mode = mode || localStorage.getItem('sop_view_mode') || 'meeting';
+  const sw=document.getElementById('sopViewSwitch');
+  if(sw){sw.querySelectorAll('button').forEach(b=>b.classList.toggle('active', b.getAttribute('data-mode')===mode));}
+  document.querySelectorAll('#tabNav button').forEach(b=>{
+    const core=b.getAttribute('data-core')==='1';
+    b.classList.toggle('core-hidden', mode==='meeting' && !core);
+  });
+  const hint=document.getElementById('sopViewHint');
+  if(hint){hint.textContent = mode==='meeting' ? SOP_VIEW_CORE_NOTE : '已展开全部 13 个标签（含后台工具）。';}
+  // 会议视图下若当前停留在非核心标签，跳回驾驶舱
+  if(mode==='meeting'){
+    const active=document.querySelector('#tabNav button.ac');
+    if(active && active.getAttribute('data-core')!=='1'){
+      const dash=document.querySelector('#tabNav button[data-core="1"]');
+      if(dash) swTab('dash', dash);
+    }
+  }
+}
+function setSopView(mode){localStorage.setItem('sop_view_mode', mode);applySopView(mode);}
 function esc(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function openModal(html){document.getElementById('mb').innerHTML=html;document.getElementById('mo').classList.add('ac');}
 function closeModal(){document.getElementById('mo').classList.remove('ac');}
@@ -1127,6 +1161,7 @@ document.getElementById('whBody').innerHTML=[
 
 // ===== 初始化 =====
 document.getElementById('mo').addEventListener('click',e=>{if(e.target.id==='mo')closeModal();});
+applySopView();
 (async()=>{await loadGlobalPeriods();reloadAll();})();
 </script>
 <script src="chat-widget.js"></script>
