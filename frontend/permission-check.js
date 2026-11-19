@@ -333,6 +333,7 @@ const PermissionCheck = {
       '</label>' +
       '<div class="ebms-topbar-actions">' +
         '<button type="button" class="ebms-icon-btn" data-badge="3" aria-label="查看通知" title="通知">' + EBMSIcons.render('notification', { size: 'sm', decorative: true }) + '</button>' +
+        '<button type="button" class="ebms-icon-btn" data-feedback="1" aria-label="问题反馈" title="问题反馈">' + EBMSIcons.render('chat', { size: 'sm', decorative: true }) + '</button>' +
         '<button type="button" class="ebms-ai-btn" aria-label="打开 AI 经营助手"><span class="ebms-icon-text">' + EBMSIcons.render('ai', { size: 'sm', decorative: true }) + '<span>AI 助手</span></span></button>' +
         '<div class="ebms-topbar-user" title="当前登录用户">' +
           '<span class="ebms-topbar-avatar" aria-hidden="true">' + _escHtml(initial) + '</span>' +
@@ -342,6 +343,17 @@ const PermissionCheck = {
     main.prepend(bar);
     const aiButton = bar.querySelector('.ebms-ai-btn');
     if (aiButton) aiButton.addEventListener('click', () => { window.location.href = 'ai-assistant.html'; });
+    // 顶栏「问题反馈」（通知旁）：打开全局反馈抽屉；未加载则跳反馈页
+    const fbButton = bar.querySelector('[data-feedback]');
+    if (fbButton) fbButton.addEventListener('click', () => {
+      const panel = document.getElementById('fbPanel');
+      if (panel) {
+        panel.classList.add('open');
+        if (typeof window.__feedbackWidgetRefresh === 'function') { try { window.__feedbackWidgetRefresh(); } catch (e) {} }
+      } else {
+        window.location.href = 'feedback.html';
+      }
+    });
     const search = bar.querySelector('input[type="search"]');
     if (search) search.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && search.value.trim()) {
