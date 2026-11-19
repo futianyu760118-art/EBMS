@@ -173,7 +173,12 @@ select:disabled,input:disabled{background:#f5f5f5;color:#999}
 <button class="btn b2 bs" onclick="savePsi()"> 保存修改</button>
 <button class="btn b5 bs" onclick="addBomProductToPsi()">＋ 从BOM添加产品</button>
 <button class="btn b2 bs" onclick="prefillPsi()"> 从EBMS订单预填销售计划</button>
-<span style="color:#999;font-size:12px">期末=期初+生产-销售，红黄绿自动计算；预填=本月实订单→M，下月实订单→M+1</span>
+<span style="color:#999;font-size:12px">从 EDP 导入：</span>
+<input type="date" id="edpStart" title="开始日期" style="padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px">
+<span style="color:#999;font-size:12px">~</span>
+<input type="date" id="edpEnd" title="结束日期" style="padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px">
+<button class="btn b1 bs" onclick="syncFromEdp()"> 导入</button>
+<span style="color:#999;font-size:12px">（不选日期=默认近2个月）</span>
 </div>
 <div class="tbl-wrap"><table id="psiTbl"><thead><tr><th>产品</th><th>月</th><th>期初</th><th>销售计划</th><th>销售实际(EDP)</th><th>生产计划</th><th>生产实际(EDP)</th><th>M+1预测</th><th>期末</th><th>安全库存</th><th>灯</th></tr></thead><tbody id="psiBody"></tbody></table></div>
 </div>
@@ -301,6 +306,14 @@ select:disabled,input:disabled{background:#f5f5f5;color:#999}
 <div class="panel"><h3>供需平衡表 <span style="font-size:12px;color:#999;font-weight:400">需求→产能→齐套→库存→缺口→谁补（6 部门报告合并主表）</span></h3>
 <div class="sg" id="balSummary"></div>
 <div class="tbl-wrap" style="max-height:44vh"><table><thead><tr><th>产品</th><th>需求(M)</th><th>生产计划</th><th>库存</th><th>缺口(需求-生产-期初)</th><th>物料短缺</th><th>谁补</th></tr></thead><tbody id="balBody"></tbody></table></div>
+</div>
+
+<!-- 销售 / 研发 月度看板（M05 销售看板 / M04 研发项目数据） -->
+<div class="panel"><h3>销售 / 研发 月度看板 <span style="font-size:12px;color:#999;font-weight:400">上期 vs 本期 vs 下期预测 · 数据来自 M05 销售看板 / M04 研发项目</span></h3>
+<div class="grid2">
+<div><h4 style="margin:6px 0;color:#667eea"> 销售（M05 销售看板）</h4><div id="m05SalesBoard" style="font-size:13px"></div></div>
+<div><h4 style="margin:6px 0;color:#9b59b6"> 研发项目（M04）</h4><div id="m04RdBoard" style="font-size:13px"></div></div>
+</div>
 </div>
 
 <details style="margin:10px 0"><summary style="cursor:pointer;font-weight:700;color:#666;padding:8px 0">各部门明细报告（6 份 · 点击展开，原报告归档）</summary>
@@ -875,6 +888,23 @@ if(!confirm('将从EBMS订单管线预填销售计划（本月实订单→M，�
 const r=await api('/psi/headers/'+psiHeaderId+'/prefill-sales',{method:'POST'});
 alert(r.message);loadPsiLines();
 }
+// 从 EDP 导入（开始/结束日期可选；不选=默认近2个月）
+async function syncFromEdp(){
+const s=document.getElementById('edpStart')?document.getElementById('edpStart').value:'';
+const e=document.getElementById('edpEnd')?document.getElementById('edpEnd').value:'';
+if(s&&e&&s>e){alert('开始日期不能晚于结束日期');return;}
+if(!confirm('从 EDP 导入（PSI实际/行动项/会议）'+(s&&e?('，时间范围 '+s+' ~ '+e):'，默认近2个月')+'？'))return;
+const body={period_month:GLOBAL_PERIOD||''};
+if(s)body.start_date=s; if(e)body.end_date=e;
+try{
+const r=await fetch('/api/v1/edp/sop/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+const j=await r.json();
+if(!r.ok){alert('导入失败：'+(j.error||r.status));return;}
+const a=j.actions||{},p=j.psi||{},m=j.meetings||{};
+alert('导入完成：\nPSI更新 '+(p.updated||0)+' 行\n行动项 新增'+(a.created||0)+'/更新'+(a.updated||0)+'（范围内'+(a.in_range_rows||0)+'，跳过过早'+(a.skipped_old||0)+'）\n会议 新增'+(m.created||0)+'/更新'+(m.updated||0));
+loadPsiLines();loadBalance();
+}catch(err){alert('导入异常：'+err.message);}
+}
 
 // ===== 供应 =====
 async function loadSupply(){
@@ -1148,7 +1178,40 @@ async function loadDept(){
 const period=await api('/dashboard');
 document.getElementById('deptPeriod').textContent=period.current_period||'-';
 loadBalance();
+loadM05SalesBoard();
+loadM04RdBoard();
 await Promise.all([loadDeptSales(),loadDeptRd(),loadDeptPlan(),loadDeptPur(),loadDeptQty(),loadDeptEng()]);
+}
+// M05 销售看板：上期 vs 本期 vs 下期预测
+async function loadM05SalesBoard(){
+const el=document.getElementById('m05SalesBoard'); if(!el)return;
+try{
+const d=await api('/dept/sales-board?period_month='+encodeURIComponent(GLOBAL_PERIOD||''));
+const p=d.period||{},prev=d.previous_actual||{},cur=d.current_actual||{},nxt=d.next_forecast||{};
+el.innerHTML=`<div class="sg">
+<div class="sc"><div class="n" style="color:#667eea">${money(prev.amount||0)}</div><div class="l">上期实际(${esc(p.previous||'')})</div></div>
+<div class="sc"><div class="n" style="color:#27ae60">${money(cur.amount||0)}</div><div class="l">本期实际(${esc(p.current||'')})</div></div>
+<div class="sc"><div class="n" style="color:${(d.mom_rate||0)>=0?'#27ae60':'#e74c3c'}">${d.mom_rate==null?'—':(d.mom_rate+'%')}</div><div class="l">环比</div></div>
+<div class="sc"><div class="n" style="color:#f39c12">${money(nxt.amount||0)}</div><div class="l">下期预测(${esc(p.next||'')})</div></div>
+</div>
+<div style="color:#999;font-size:11px;margin-top:6px">订单数：上期 ${prev.count||0} / 本期 ${cur.count||0} / 下期管线 ${nxt.count||0}；来源 ${esc(d.source||'')}${d.errors&&d.errors.orders?('（'+esc(d.errors.orders)+'）'):''}</div>`;
+}catch(e){el.innerHTML='<div style="color:#c62828">M05 销售看板加载失败：'+esc(e.message)+'</div>';}
+}
+// M04 研发项目看板：上期/本期计划 vs 实际 + 下期在研
+async function loadM04RdBoard(){
+const el=document.getElementById('m04RdBoard'); if(!el)return;
+try{
+const d=await api('/dept/rd-board?period_month='+encodeURIComponent(GLOBAL_PERIOD||''));
+if(d.connected===false){el.innerHTML='<div style="color:#b45309">M04 研发项目未接入：'+esc(d.reason||'')+'</div>';return;}
+const p=d.period||{},prev=d.previous||{},cur=d.current||{},nxt=d.next_forecast||{};
+el.innerHTML=`<div class="sg">
+<div class="sc"><div class="n" style="color:#9b59b6">${prev.plan||0} / ${prev.done||0}</div><div class="l">上期计划/完成(${esc(p.previous||'')})</div></div>
+<div class="sc"><div class="n" style="color:#8e44ad">${cur.plan||0} / ${cur.done||0}</div><div class="l">本期计划/完成(${esc(p.current||'')})</div></div>
+<div class="sc"><div class="n" style="color:${(cur.rate||0)>=80?'#27ae60':'#e74c3c'}">${cur.rate==null?'—':(cur.rate+'%')}</div><div class="l">本期完成率</div></div>
+<div class="sc"><div class="n" style="color:#f39c12">${nxt.count||0}</div><div class="l">下期在研(${esc(p.next||'')})</div></div>
+</div>
+<div style="color:#999;font-size:11px;margin-top:6px">项目总数 ${d.total_projects||0} / 已完成 ${d.done_projects||0}；来源 ${esc(d.source||'')}</div>`;
+}catch(e){el.innerHTML='<div style="color:#c62828">M04 研发项目看板加载失败：'+esc(e.message)+'</div>';}
 }
 // 供需平衡表（C档合并主表）
 async function loadBalance(){

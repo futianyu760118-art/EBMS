@@ -1519,6 +1519,26 @@ router.get('/supply-balance', (req, res) => {
   res.json({ summary, rows: rows.slice(0, 200), capacity: caps });
 });
 
+// M05 CRM 销售看板：上期实际 vs 本期实际 + 下期预测（数据来自 M05 销售看板）
+router.get('/dept/sales-board', async (req, res) => {
+  try {
+    const crmSales = require('../lib/crm-sales');
+    res.json(await crmSales.getSalesBoard(reqPeriod(req)));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// M04 PLM 研发项目看板：上期/本期计划 vs 实际 + 下期在研预测（数据来自 M04 研发项目）
+router.get('/dept/rd-board', async (req, res) => {
+  try {
+    const plm = require('../lib/plm-projects');
+    res.json(await plm.getProjectsBoard(reqPeriod(req)));
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 router.get('/dept/sales', (req, res) => {
   const orders = ebmsTable('orders').all();
   const fc = getTable('demand_forecasts'); fc._invalidate();

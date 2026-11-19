@@ -131,16 +131,20 @@ function monthsAgoDate(months) {
  */
 async function syncActionsFromEdp(opts) {
   const o = opts || {};
+  const startDate = o.start_date || '';
+  const endDate = o.end_date || '';
   const cutoff = o.cutoff_date || (o.months_back === 0 ? '' : monthsAgoDate(o.months_back === undefined ? 2 : o.months_back));
   const allRows = edpRows('meeting-assistant-actions');
-  // 时间过滤：无日期的保留；有日期的 < 截止日则视为"2个月以前"跳过
-  const rows = cutoff
-    ? allRows.filter((r) => {
-        const p = r.payload || {};
-        const d = String(p.due_date || p.created_at || p.occurred_at || '').slice(0, 10);
-        return !d || d >= cutoff;
-      })
-    : allRows;
+  // 时间过滤（开始/结束都可选）：无日期保留；指定 start/end 时按区间过滤；否则按 cutoff（默认近 2 个月）
+  const rows = allRows.filter((r) => {
+    const p = r.payload || {};
+    const d = String(p.due_date || p.created_at || p.occurred_at || '').slice(0, 10);
+    if (!d) return true;
+    if (startDate && d < startDate) return false;
+    if (endDate && d > endDate) return false;
+    if (!startDate && !endDate && cutoff && d < cutoff) return false;
+    return true;
+  });
   const actT = getTable('sop_actions');
   const statusMap = { done: 'CLOSED', in_progress: 'IN_PROGRESS', todo: 'PENDING', pending: 'PENDING' };
   let created = 0, updated = 0, skipped = 0;
@@ -175,7 +179,7 @@ async function syncActionsFromEdp(opts) {
       created++;
     }
   }
-  return { ok: true, cutoff: cutoff || null, source_rows: allRows.length, in_range_rows: rows.length, skipped_old: allRows.length - rows.length, created, updated, skipped };
+  return { ok: true, start_date: startDate || null, end_date: endDate || null, cutoff: cutoff || null, source_rows: allRows.length, in_range_rows: rows.length, skipped_old: allRows.length - rows.length, created, updated, skipped };
 }
 
 module.exports = { syncPsiFromEdp, syncActionsFromEdp, monthsAgoDate };
